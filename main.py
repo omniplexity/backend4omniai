@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 from services.tooling import web_search
@@ -31,6 +31,17 @@ class ChatRequest(BaseModel):
     message: str
     use_search: bool = False
     search_query: str | None = None
+    model: str | None = Field(
+        default=None,
+        description="Override LM Studio model; falls back to LM_STUDIO_MODEL env"
+    )
+    system_prompt: str | None = Field(
+        default=None,
+        description="Optional system prompt to steer responses"
+    )
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    max_tokens: int | None = Field(default=None, gt=0)
 
 class ChatResponse(BaseModel):
     response: str
@@ -38,19 +49,41 @@ class ChatResponse(BaseModel):
 # -----------------------------------------------------------
 # INTERNAL HELPERS
 # -----------------------------------------------------------
-def call_lm_studio(user_message: str) -> str:
+def call_lm_studio(
+    user_message: str,
+    model: str | None = None,
+    system_prompt: str | None = None,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
+) -> str:
     lm_studio_url = os.environ.get(
         "LM_STUDIO_URL",
         "http://10.0.0.198:11434/v1/chat/completions"
     )
+
+    selected_model = model or os.environ.get(
+        "LM_STUDIO_MODEL",
+        "qwen3-vl-4b-thinking-1m"
+    )
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_message})
+
     payload = {
-        "model": os.environ.get(
-            "LM_STUDIO_MODEL",
-            "qwen3-vl-4b-thinking-1m"
-        ),
-        "messages": [{"role": "user", "content": user_message}],
+        "model": selected_model,
+        "messages": messages,
         "stream": False
     }
+
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if top_p is not None:
+        payload["top_p"] = top_p
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
 
     response = requests.post(lm_studio_url, json=payload, timeout=30)
     # If LM Studio itself errors (e.g., model not loaded), surface the error body
@@ -92,7 +125,7 @@ async def chat(request: ChatRequest):
             query = request.search_query or request.message
             search_snippets = web_search(query, max_results=5)
             tool_context = "\n".join(
-                f"- {item['title']} — {item['snippet']}" for item in search_snippets
+                f"- {item['title']} - {item['snippet']}" for item in search_snippets
             )
             user_message = (
                 f"{request.message}\n\n"
@@ -104,7 +137,14 @@ async def chat(request: ChatRequest):
             # Continue without search context
 
     try:
-        reply_text = call_lm_studio(user_message)
+        reply_text = call_lm_studio(
+            user_message=user_message,
+            model=request.model,
+            system_prompt=request.system_prompt,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            max_tokens=request.max_tokens,
+        )
         return ChatResponse(response=reply_text)
     except HTTPException:
         # Already an HTTP-friendly error
