@@ -61,6 +61,8 @@ def call_lm_studio(
         "LM_STUDIO_URL",
         "http://10.0.0.198:11434/v1/chat/completions"
     )
+    # Allow slow-to-start models (e.g., large vision models) to complete by making the timeout configurable
+    timeout_seconds = float(os.environ.get("LM_STUDIO_TIMEOUT", "120"))
 
     selected_model = model or os.environ.get(
         "LM_STUDIO_MODEL",
@@ -85,7 +87,7 @@ def call_lm_studio(
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
 
-    response = requests.post(lm_studio_url, json=payload, timeout=30)
+    response = requests.post(lm_studio_url, json=payload, timeout=timeout_seconds)
     # If LM Studio itself errors (e.g., model not loaded), surface the error body
     try:
         response.raise_for_status()
