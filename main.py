@@ -1,4 +1,5 @@
 import os
+import time
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -11,8 +12,12 @@ app = FastAPI()
 # CORS SETTINGS - update origins as needed
 # -----------------------------------------------------------
 allowed_origins = [
-    "https://omniplexity.github.io",
-    "https://rossie-chargeful-plentifully.ngrok-free.dev"
+    origin.strip()
+    for origin in os.environ.get(
+        "ALLOWED_ORIGINS",
+        "https://omniplexity.github.io,https://rossie-chargeful-plentifully.ngrok-free.dev"
+    ).split(",")
+    if origin.strip()
 ]
 
 app.add_middleware(
@@ -22,6 +27,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -----------------------------------------------------------
+# SIMPLE REQUEST LOGGING
+# -----------------------------------------------------------
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        duration_ms = (time.perf_counter() - start) * 1000
+        path = request.url.path
+        method = request.method
+        status = getattr(response, "status_code", "unknown")
+        print(f"{method} {path} -> {status} ({duration_ms:.1f} ms)")
 
 # -----------------------------------------------------------
 # REQUEST & RESPONSE MODELS
