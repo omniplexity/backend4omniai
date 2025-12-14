@@ -69,6 +69,7 @@ class ChatResponse(BaseModel):
 
 class ModelsResponse(BaseModel):
     models: list[str]
+    default_model: str | None = None
 
 # -----------------------------------------------------------
 # INTERNAL HELPERS
@@ -221,4 +222,5 @@ async def chat_root_alias(request: ChatRequest):
 @app.get("/api/models", response_model=ModelsResponse)
 async def get_models():
     models = list_lm_studio_models()
-    return ModelsResponse(models=models)
+    default_model = os.environ.get("LM_STUDIO_MODEL") or (models[0] if models else None)
+    return ModelsResponse(models=models, default_model=default_model)
