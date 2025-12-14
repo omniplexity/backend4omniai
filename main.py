@@ -87,6 +87,7 @@ def call_lm_studio(
     )
     # Allow slow-to-start models (e.g., large vision models) to complete by making the timeout configurable
     timeout_seconds = float(os.environ.get("LM_STUDIO_TIMEOUT", "120"))
+    max_retries = int(os.environ.get("LM_STUDIO_RETRIES", "2"))
 
     selected_model = model or os.environ.get(
         "LM_STUDIO_MODEL",
@@ -110,14 +111,18 @@ def call_lm_studio(
         payload["top_p"] = top_p
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
-
-    response = requests.post(lm_studio_url, json=payload, timeout=timeout_seconds)
-    # If LM Studio itself errors (e.g., model not loaded), surface the error body
-    try:
-        response.raise_for_status()
-    except Exception as exc:
-        detail = response.text if response is not None else str(exc)
-        raise HTTPException(status_code=502, detail=f"LM Studio upstream error: {detail}")
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            response = requests.post(lm_studio_url, json=payload, timeout=timeout_seconds)
+            response.raise_for_status()
+            break
+        except Exception as exc:
+            last_error = exc
+            if attempt >= max_retries:
+                detail = response.text if 'response' in locals() and response is not None else str(exc)
+                raise HTTPException(status_code=502, detail=f"LM Studio upstream error: {detail}")
+            time.sleep(0.5 * (attempt + 1))
 
     data = response.json()
     choices = data.get("choices") or []
