@@ -46,6 +46,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
 
+class ModelsResponse(BaseModel):
+    models: list[str]
+
 # -----------------------------------------------------------
 # INTERNAL HELPERS
 # -----------------------------------------------------------
@@ -107,6 +110,31 @@ def call_lm_studio(
 
     return reply_text
 
+
+def list_lm_studio_models() -> list[str]:
+    """
+    Query the LM Studio OpenAI-compatible /v1/models endpoint.
+    """
+    lm_studio_url = os.environ.get(
+        "LM_STUDIO_URL",
+        "http://10.0.0.198:11434/v1/chat/completions"
+    )
+    # Derive base /v1 prefix
+    if "/v1/" in lm_studio_url:
+        base = lm_studio_url.split("/v1/", 1)[0] + "/v1/models"
+    else:
+        base = lm_studio_url.rstrip("/") + "/v1/models"
+
+    try:
+        resp = requests.get(base, timeout=8)
+        resp.raise_for_status()
+        data = resp.json()
+        model_list = [m.get("id") for m in data.get("data", []) if m.get("id")]
+        return model_list
+    except Exception as exc:
+        print("ERROR fetching LM Studio models:", str(exc))
+        raise HTTPException(status_code=502, detail=f"LM Studio model list failed: {str(exc)}")
+
 # -----------------------------------------------------------
 # HEALTH CHECK
 # -----------------------------------------------------------
@@ -162,3 +190,9 @@ async def chat(request: ChatRequest):
 @app.post("/", response_model=ChatResponse)
 async def chat_root_alias(request: ChatRequest):
     return await chat(request)
+
+
+@app.get("/api/models", response_model=ModelsResponse)
+async def get_models():
+    models = list_lm_studio_models()
+    return ModelsResponse(models=models)
