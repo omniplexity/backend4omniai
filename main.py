@@ -147,6 +147,19 @@ def request_is_secure(request: Request) -> bool:
     proto = request.headers.get("x-forwarded-proto", request.url.scheme)
     return proto.lower() == "https"
 
+def cookie_flags_for_request(request: Request):
+    """
+    Return kwargs for setting/deleting the session cookie with consistent flags.
+    """
+    secure_cookie = request_is_secure(request)
+    same_site = "none" if secure_cookie else "lax"
+    return {
+        "httponly": True,
+        "secure": secure_cookie,
+        "samesite": same_site,
+        "path": "/",
+    }
+
 def sign_session(user_id: int, is_admin: bool) -> str:
     exp = int((datetime.utcnow() + timedelta(hours=SESSION_HOURS)).timestamp())
     payload = f"{user_id}:{int(is_admin)}:{exp}"
@@ -422,23 +435,20 @@ async def auth_login(payload: LoginRequest, response: Response, request: Request
         conn.close()
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = sign_session(user["id"], bool(user["is_admin"]))
-    secure_cookie = request_is_secure(request)
-    # Browsers reject "Secure" cookies over http://localhost, so relax for local dev.
-    same_site = "none" if secure_cookie else "lax"
+    cookie_args = cookie_flags_for_request(request)
     response.set_cookie(
         SESSION_COOKIE,
         token,
-        httponly=True,
-        secure=secure_cookie,
-        samesite=same_site,
         max_age=int(SESSION_HOURS * 3600),
+        **cookie_args,
     )
     conn.close()
     return LoginResponse(email=user["email"], is_admin=bool(user["is_admin"]))
 
 @app.post("/api/auth/logout")
-async def auth_logout(response: Response):
-    response.delete_cookie(SESSION_COOKIE)
+async def auth_logout(response: Response, request: Request):
+    cookie_args = cookie_flags_for_request(request)
+    response.delete_cookie(SESSION_COOKIE, **cookie_args)
     return {"status": "logged out"}
 
 @app.get("/api/auth/me", response_model=LoginResponse)
