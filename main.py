@@ -38,6 +38,10 @@ for origin in raw_origins:
         continue
     allowed_origins.append(cleaned)
 
+# Always allow localhost/127.0.0.1 on any port for dev, unless a broader regex is already provided.
+if allow_origin_regex is None:
+    allow_origin_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
