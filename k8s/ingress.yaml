@@ -6,12 +6,24 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: nginx
 spec:
-  tls:
-    - hosts:
-        - rossie-chargeful-plentifully.ngrok-free.dev
-        - localhost
-      secretName: ai-webui-tls
   rules:
+    - host: localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-svc
+                port:
+                  number: 80
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend-svc
+                port:
+                  number: 8000
     - host: rossie-chargeful-plentifully.ngrok-free.dev
       http:
         paths:
