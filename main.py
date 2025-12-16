@@ -16,7 +16,7 @@ app = FastAPI()
 
 # CORS SETTINGS - update origins as needed
 # -----------------------------------------------------------
-allowed_origins = [
+raw_origins = [
     origin.strip()
     for origin in os.environ.get(
         "ALLOWED_ORIGINS",
@@ -25,9 +25,23 @@ allowed_origins = [
     if origin.strip()
 ]
 
+# Allow an "*" entry in ALLOWED_ORIGINS but still echo the caller's Origin
+# header so credentialed requests are permitted. Browsers reject credentials
+# when ACAO is "*".
+allowed_origins: list[str] = []
+allow_origin_regex: str | None = None
+
+for origin in raw_origins:
+    cleaned = origin.rstrip("/")
+    if cleaned == "*":
+        allow_origin_regex = r"https?://.*"
+        continue
+    allowed_origins.append(cleaned)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
