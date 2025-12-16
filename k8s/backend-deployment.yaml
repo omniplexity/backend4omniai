@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-webui-backend
+  namespace: ai-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-webui-backend
+  template:
+    metadata:
+      labels:
+        app: ai-webui-backend
+    spec:
+      containers:
+        - name: backend
+          image: ai-webui-backend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: backend-env
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20

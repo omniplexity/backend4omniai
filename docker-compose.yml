@@ -24,8 +24,15 @@ services:
     container_name: ai-webui-ngrok
     env_file:
       - .env
+    environment:
+      NGROK_CONFIG: /app/ngrok.yml
     # Expose backend:8000 over ngrok; dashboard available on 4040
-    command: http --log=stdout backend:8000
+    command: "start --all --config /app/ngrok.yml --log=stdout"
+    volumes:
+      - ./ngrok.yml:/app/ngrok.yml:ro
+      - ./ngrok-data:/var/lib/ngrok
+      - ./ngrok-data/auth-config.yml:/var/lib/ngrok/auth-config.yml:ro
+      - ./ngrok.yml:/var/lib/ngrok/ngrok.yml:ro
     depends_on:
       backend:
         condition: service_healthy

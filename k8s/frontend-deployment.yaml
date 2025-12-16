@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-webui-frontend
+  namespace: ai-webui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-webui-frontend
+  template:
+    metadata:
+      labels:
+        app: ai-webui-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ai-webui-frontend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
