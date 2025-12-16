@@ -51,6 +51,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Fix browsers rejecting credentialed requests when ACAO is "*" by echoing the caller's origin.
+@app.middleware("http")
+async def rewrite_acao_for_credentials(request: Request, call_next):
+    response = await call_next(request)
+    origin = request.headers.get("origin")
+    acao = response.headers.get("access-control-allow-origin")
+    if origin and acao == "*":
+        response.headers["access-control-allow-origin"] = origin
+    return response
+
 # -----------------------------------------------------------
 # AUTH / USER STORE
 # -----------------------------------------------------------
