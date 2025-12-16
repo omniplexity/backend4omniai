@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DEFAULT_TIMEOUT=100 \
     LM_STUDIO_URL=http://10.0.0.198:11434/v1/chat/completions \
     LM_STUDIO_MODEL=qwen3-vl-4b-thinking-1m \
-    ALLOWED_ORIGINS=https://omniplexity.github.io
+    ALLOWED_ORIGINS=https://omniplexity.github.io,https://rossie-chargeful-plentifully.ngrok-free.dev,https://localhost
 
 WORKDIR /app
 
