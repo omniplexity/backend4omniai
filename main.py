@@ -125,6 +125,14 @@ def list_users(conn):
     cur.execute("SELECT id, email, is_admin, created_at FROM users ORDER BY created_at DESC")
     return [dict(r) for r in cur.fetchall()]
 
+def request_is_secure(request: Request) -> bool:
+    """
+    Determine whether the client connection is effectively HTTPS.
+    Honors reverse-proxy X-Forwarded-Proto if present.
+    """
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    return proto.lower() == "https"
+
 def sign_session(user_id: int, is_admin: bool) -> str:
     exp = int((datetime.utcnow() + timedelta(hours=SESSION_HOURS)).timestamp())
     payload = f"{user_id}:{int(is_admin)}:{exp}"
@@ -393,19 +401,22 @@ async def get_models(user=Depends(require_user)):
 # AUTH ROUTES
 # -----------------------------------------------------------
 @app.post("/api/auth/login", response_model=LoginResponse)
-async def auth_login(payload: LoginRequest, response: Response):
+async def auth_login(payload: LoginRequest, response: Response, request: Request):
     conn = get_db()
     user = get_user_by_email(conn, payload.email)
     if not user or not verify_password(payload.password, user["password_hash"]):
         conn.close()
         raise HTTPException(status_code=401, detail="Invalid credentials")
     token = sign_session(user["id"], bool(user["is_admin"]))
+    secure_cookie = request_is_secure(request)
+    # Browsers reject "Secure" cookies over http://localhost, so relax for local dev.
+    same_site = "none" if secure_cookie else "lax"
     response.set_cookie(
         SESSION_COOKIE,
         token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=secure_cookie,
+        samesite=same_site,
         max_age=int(SESSION_HOURS * 3600),
     )
     conn.close()
