@@ -91,6 +91,36 @@ def init_db():
     )
     conn.commit()
 
+    # Conversation threads (per user) and messages
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS threads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            thread_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (thread_id) REFERENCES threads(id),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads(user_id);")
+
     cur.execute("SELECT COUNT(*) AS c FROM users")
     count = cur.fetchone()["c"]
     if count == 0:
@@ -138,6 +168,85 @@ def list_users(conn):
     cur = conn.cursor()
     cur.execute("SELECT id, email, is_admin, created_at FROM users ORDER BY created_at DESC")
     return [dict(r) for r in cur.fetchall()]
+
+# -----------------------------------------------------------
+# THREADS / MESSAGES
+# -----------------------------------------------------------
+def ensure_thread_owner(conn, thread_id: int, user_id: int):
+    cur = conn.cursor()
+    cur.execute("SELECT id, user_id, title, created_at, updated_at FROM threads WHERE id = ?", (thread_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    if row["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return row
+
+def create_thread(conn, user_id: int, title: str):
+    now = datetime.utcnow().isoformat()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO threads (user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (user_id, title.strip() or "New chat", now, now),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+def list_threads(conn, user_id: int):
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, title, created_at, updated_at
+        FROM threads
+        WHERE user_id = ?
+        ORDER BY updated_at DESC
+        """,
+        (user_id,),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+def rename_thread(conn, thread_id: int, user_id: int, title: str):
+    ensure_thread_owner(conn, thread_id, user_id)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE threads SET title = ?, updated_at = ? WHERE id = ?",
+        (title.strip() or "Untitled chat", datetime.utcnow().isoformat(), thread_id),
+    )
+    conn.commit()
+
+def delete_thread(conn, thread_id: int, user_id: int):
+    ensure_thread_owner(conn, thread_id, user_id)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM messages WHERE thread_id = ?", (thread_id,))
+    cur.execute("DELETE FROM threads WHERE id = ?", (thread_id,))
+    conn.commit()
+
+def list_thread_messages(conn, thread_id: int, user_id: int):
+    ensure_thread_owner(conn, thread_id, user_id)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, role, content, created_at
+        FROM messages
+        WHERE thread_id = ?
+        ORDER BY id ASC
+        """,
+        (thread_id,),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+def append_message(conn, thread_id: int, user_id: int, role: str, content: str):
+    ensure_thread_owner(conn, thread_id, user_id)
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO messages (thread_id, user_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)",
+        (thread_id, user_id, role, content, datetime.utcnow().isoformat()),
+    )
+    cur.execute(
+        "UPDATE threads SET updated_at = ? WHERE id = ?",
+        (datetime.utcnow().isoformat(), thread_id),
+    )
+    conn.commit()
 
 def request_is_secure(request: Request) -> bool:
     """
@@ -232,6 +341,7 @@ class ChatRequest(BaseModel):
     message: str
     use_search: bool = False
     search_query: str | None = None
+    thread_id: int | None = Field(default=None, description="Associate this message with a conversation thread")
     model: str | None = Field(
         default=None,
         description="Override LM Studio model; falls back to LM_STUDIO_MODEL env"
@@ -268,6 +378,18 @@ class UserOut(BaseModel):
     id: int
     email: str
     is_admin: bool
+    created_at: str
+
+class ThreadOut(BaseModel):
+    id: int
+    title: str
+    created_at: str
+    updated_at: str
+
+class MessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
     created_at: str
 
 # -----------------------------------------------------------
@@ -374,6 +496,11 @@ async def root():
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, user=Depends(require_user)):
     user_message = request.message
+    thread_id = request.thread_id
+    conn = None
+    if thread_id is not None:
+        conn = get_db()
+        ensure_thread_owner(conn, thread_id, user["id"])
 
     # Optional tool use: prepend web search results if requested
     if request.use_search or request.search_query:
@@ -401,12 +528,18 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
             top_p=request.top_p,
             max_tokens=request.max_tokens,
         )
+        if thread_id is not None:
+            append_message(conn, thread_id, user["id"], "user", request.message)
+            append_message(conn, thread_id, user["id"], "assistant", reply_text)
+            conn.close()
         return ChatResponse(response=reply_text)
     except HTTPException:
         # Already an HTTP-friendly error
         raise
     except Exception as e:
         print("ERROR communicating with LM Studio:", str(e))
+        if conn:
+            conn.close()
         raise HTTPException(
             status_code=500,
             detail=f"LM Studio error: {str(e)}"
@@ -423,6 +556,50 @@ async def get_models(user=Depends(require_user)):
     models = list_lm_studio_models()
     default_model = os.environ.get("LM_STUDIO_MODEL") or (models[0] if models else None)
     return ModelsResponse(models=models, default_model=default_model)
+
+# -----------------------------------------------------------
+# THREADS & MESSAGES
+# -----------------------------------------------------------
+@app.post("/api/threads", response_model=ThreadOut)
+async def api_create_thread(payload: dict, user=Depends(require_user)):
+    title = (payload.get("title") or "New chat") if isinstance(payload, dict) else "New chat"
+    conn = get_db()
+    thread_id = create_thread(conn, user["id"], title)
+    row = ensure_thread_owner(conn, thread_id, user["id"])
+    conn.close()
+    return ThreadOut(**row)
+
+@app.get("/api/threads", response_model=list[ThreadOut])
+async def api_list_threads(user=Depends(require_user)):
+    conn = get_db()
+    rows = list_threads(conn, user["id"])
+    conn.close()
+    return [ThreadOut(**r) for r in rows]
+
+@app.patch("/api/threads/{thread_id}", response_model=ThreadOut)
+async def api_rename_thread(thread_id: int, payload: dict, user=Depends(require_user)):
+    new_title = (payload.get("title") or "").strip() if isinstance(payload, dict) else ""
+    if not new_title:
+        raise HTTPException(status_code=400, detail="Title required")
+    conn = get_db()
+    rename_thread(conn, thread_id, user["id"], new_title)
+    row = ensure_thread_owner(conn, thread_id, user["id"])
+    conn.close()
+    return ThreadOut(**row)
+
+@app.delete("/api/threads/{thread_id}")
+async def api_delete_thread(thread_id: int, user=Depends(require_user)):
+    conn = get_db()
+    delete_thread(conn, thread_id, user["id"])
+    conn.close()
+    return {"status": "deleted"}
+
+@app.get("/api/threads/{thread_id}/messages", response_model=list[MessageOut])
+async def api_get_thread_messages(thread_id: int, user=Depends(require_user)):
+    conn = get_db()
+    messages = list_thread_messages(conn, thread_id, user["id"])
+    conn.close()
+    return [MessageOut(**m) for m in messages]
 
 # -----------------------------------------------------------
 # AUTH ROUTES
@@ -478,3 +655,14 @@ async def list_users_route(admin=Depends(require_admin)):
     users = list_users(conn)
     conn.close()
     return [UserOut(**u) for u in users]
+
+# -----------------------------------------------------------
+# IMAGE GENERATION (placeholder)
+# -----------------------------------------------------------
+@app.post("/api/image/generate")
+async def generate_image(payload: dict, user=Depends(require_user)):
+    raise HTTPException(status_code=501, detail="Image generation is not implemented yet")
+
+
+# Ensure tables exist on import
+init_db()
