@@ -213,6 +213,7 @@ def init_db():
         );
         """
     )
+    conn.commit()
 
     cur.execute("SELECT COUNT(*) AS c FROM users")
     count = cur.fetchone()["c"]
