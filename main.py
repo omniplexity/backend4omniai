@@ -1,18 +1,36 @@
 import os
 import time
 import hmac
+import json
+import uuid
 import hashlib
 import sqlite3
 import secrets
+import re
 from datetime import datetime, timedelta
+from collections import defaultdict, deque
+from threading import Lock
+from typing import Any, Literal
+
+import requests
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
-import requests
-from services.tooling import web_search
+from prometheus_fastapi_instrumentator import Instrumentator
+
+from services.logging_utils import (
+    configure_logging,
+    request_id_ctx,
+    user_id_ctx,
+    path_ctx,
+    method_ctx,
+    client_ip_ctx,
+)
+from services.tool_registry import TOOL_REGISTRY
 
 app = FastAPI()
+logger = configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
 
 # CORS SETTINGS - update origins as needed
 # -----------------------------------------------------------
@@ -51,16 +69,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Fix browsers rejecting credentialed requests when ACAO is "*" by echoing the caller's origin.
-@app.middleware("http")
-async def rewrite_acao_for_credentials(request: Request, call_next):
-    response = await call_next(request)
-    origin = request.headers.get("origin")
-    acao = response.headers.get("access-control-allow-origin")
-    if origin and acao == "*":
-        response.headers["access-control-allow-origin"] = origin
-    return response
-
 # -----------------------------------------------------------
 # AUTH / USER STORE
 # -----------------------------------------------------------
@@ -68,6 +76,47 @@ DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), "dat
 AUTH_SECRET = os.environ.get("AUTH_SECRET", "change-me")
 SESSION_COOKIE = "omni_session"
 SESSION_HOURS = float(os.environ.get("SESSION_HOURS", "8"))
+RATE_LIMIT_ENABLED = os.environ.get("RATE_LIMIT_ENABLED", "true").lower() in ("1", "true", "yes")
+RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("RATE_LIMIT_WINDOW_SECONDS", "60"))
+RATE_LIMIT_MAX_REQUESTS = int(os.environ.get("RATE_LIMIT_MAX_REQUESTS", "120"))
+RATE_LIMIT_EXEMPT_PATHS = {"/metrics"}
+
+DEFAULT_THEME_MODE = os.environ.get("DEFAULT_THEME_MODE", "light")
+DEFAULT_GRADIENT_START = os.environ.get("DEFAULT_GRADIENT_START", "#0b84ff")
+DEFAULT_GRADIENT_END = os.environ.get("DEFAULT_GRADIENT_END", "#0c9eff")
+DEFAULT_GRADIENT_ANGLE = int(os.environ.get("DEFAULT_GRADIENT_ANGLE", "140"))
+
+SD_WEBUI_URL = os.environ.get("SD_WEBUI_URL", "").strip()
+SD_WEBUI_TIMEOUT = float(os.environ.get("SD_WEBUI_TIMEOUT", "120"))
+SD_WEBUI_STEPS = int(os.environ.get("SD_WEBUI_STEPS", "30"))
+SD_WEBUI_CFG_SCALE = float(os.environ.get("SD_WEBUI_CFG_SCALE", "7"))
+SD_WEBUI_WIDTH = int(os.environ.get("SD_WEBUI_WIDTH", "512"))
+SD_WEBUI_HEIGHT = int(os.environ.get("SD_WEBUI_HEIGHT", "512"))
+SD_WEBUI_SAMPLER = os.environ.get("SD_WEBUI_SAMPLER", "Euler a")
+
+DEFAULT_ALLOWED_TOOLS = {
+    name.strip()
+    for name in os.environ.get("DEFAULT_ALLOWED_TOOLS", "web_search").split(",")
+    if name.strip()
+}
+
+def load_model_tool_allowlist() -> dict[str, set[str]]:
+    raw = os.environ.get("MODEL_TOOL_ALLOWLIST", "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Invalid MODEL_TOOL_ALLOWLIST JSON; ignoring")
+        return {}
+    mapping: dict[str, set[str]] = {}
+    if isinstance(parsed, dict):
+        for model_name, tools in parsed.items():
+            if isinstance(tools, list):
+                mapping[model_name] = {str(t) for t in tools}
+    return mapping
+
+MODEL_TOOL_ALLOWLIST = load_model_tool_allowlist()
 
 def get_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -121,13 +170,55 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages(thread_id);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads(user_id);")
 
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_settings (
+            user_id INTEGER PRIMARY KEY,
+            theme_mode TEXT NOT NULL,
+            gradient_start TEXT NOT NULL,
+            gradient_end TEXT NOT NULL,
+            gradient_angle INTEGER NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_tools (
+            user_id INTEGER NOT NULL,
+            tool_name TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, tool_name),
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        """
+    )
+
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tool_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            tool_name TEXT NOT NULL,
+            input TEXT,
+            status TEXT NOT NULL,
+            duration_ms REAL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+        """
+    )
+
     cur.execute("SELECT COUNT(*) AS c FROM users")
     count = cur.fetchone()["c"]
     if count == 0:
         admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@example.com")
         admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "change-this")
         add_user(conn, admin_email, admin_password, True)
-        print(f"Bootstrap admin created: {admin_email}")
+        logger.info("bootstrap_admin_created", extra={"event": "bootstrap"})
     conn.close()
 
 def hash_password(password: str) -> str:
@@ -167,6 +258,102 @@ def get_user_by_id(conn, user_id: int):
 def list_users(conn):
     cur = conn.cursor()
     cur.execute("SELECT id, email, is_admin, created_at FROM users ORDER BY created_at DESC")
+    return [dict(r) for r in cur.fetchall()]
+
+
+def get_user_settings(conn, user_id: int):
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT theme_mode, gradient_start, gradient_end, gradient_angle FROM user_settings WHERE user_id = ?",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def upsert_user_settings(conn, user_id: int, settings: dict[str, Any]):
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO user_settings (user_id, theme_mode, gradient_start, gradient_end, gradient_angle, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id)
+        DO UPDATE SET
+            theme_mode = excluded.theme_mode,
+            gradient_start = excluded.gradient_start,
+            gradient_end = excluded.gradient_end,
+            gradient_angle = excluded.gradient_angle,
+            updated_at = excluded.updated_at
+        """,
+        (
+            user_id,
+            settings["theme_mode"],
+            settings["gradient_start"],
+            settings["gradient_end"],
+            settings["gradient_angle"],
+            datetime.utcnow().isoformat(),
+        ),
+    )
+    conn.commit()
+
+
+def list_user_tool_preferences(conn, user_id: int) -> dict[str, bool]:
+    cur = conn.cursor()
+    cur.execute("SELECT tool_name, enabled FROM user_tools WHERE user_id = ?", (user_id,))
+    return {row["tool_name"]: bool(row["enabled"]) for row in cur.fetchall()}
+
+
+def set_user_tool_preference(conn, user_id: int, tool_name: str, enabled: bool):
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO user_tools (user_id, tool_name, enabled, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, tool_name)
+        DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
+        """,
+        (user_id, tool_name, 1 if enabled else 0, datetime.utcnow().isoformat()),
+    )
+    conn.commit()
+
+
+def record_tool_usage(
+    conn,
+    user_id: int | None,
+    tool_name: str,
+    input_payload: dict[str, Any],
+    status: str,
+    duration_ms: float | None,
+):
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO tool_usage (user_id, tool_name, input, status, duration_ms, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user_id,
+            tool_name,
+            json.dumps(input_payload, ensure_ascii=True),
+            status,
+            duration_ms,
+            datetime.utcnow().isoformat(),
+        ),
+    )
+    conn.commit()
+
+
+def list_tool_usage(conn, limit: int = 50):
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, user_id, tool_name, input, status, duration_ms, created_at
+        FROM tool_usage
+        ORDER BY created_at DESC
+        LIMIT ?
+        """,
+        (int(limit),),
+    )
     return [dict(r) for r in cur.fetchall()]
 
 # -----------------------------------------------------------
@@ -317,21 +504,142 @@ def require_admin(request: Request):
         raise HTTPException(status_code=403, detail="Admin only")
     return user
 
+class SlidingWindowRateLimiter:
+    def __init__(self, max_requests: int, window_seconds: int):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._events: dict[str, deque[float]] = defaultdict(deque)
+        self._lock = Lock()
+
+    def allow(self, key: str) -> tuple[bool, int | None]:
+        now = time.time()
+        with self._lock:
+            events = self._events[key]
+            while events and events[0] <= now - self.window_seconds:
+                events.popleft()
+            if len(events) >= self.max_requests:
+                retry_after = int(self.window_seconds - (now - events[0]))
+                return False, max(retry_after, 1)
+            events.append(now)
+        return True, None
+
+
+rate_limiter = None
+if RATE_LIMIT_ENABLED:
+    rate_limiter = SlidingWindowRateLimiter(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS)
+
+
+def get_client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return None
+
+
+def allowed_tools_for_model(model_name: str | None) -> set[str]:
+    if not model_name:
+        return DEFAULT_ALLOWED_TOOLS
+    if model_name in MODEL_TOOL_ALLOWLIST:
+        return MODEL_TOOL_ALLOWLIST[model_name]
+    if "*" in MODEL_TOOL_ALLOWLIST:
+        return MODEL_TOOL_ALLOWLIST["*"]
+    return DEFAULT_ALLOWED_TOOLS
+
+
+def is_valid_hex_color(value: str) -> bool:
+    return bool(re.fullmatch(r"#[0-9A-Fa-f]{6}", value or ""))
+
+
 # -----------------------------------------------------------
-# SIMPLE REQUEST LOGGING
+# REQUEST CONTEXT + LOGGING + RATE LIMITING
 # -----------------------------------------------------------
 @app.middleware("http")
-async def log_requests(request: Request, call_next):
+async def request_context_middleware(request: Request, call_next):
     start = time.perf_counter()
+    response = None
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    request.state.request_id = request_id
+
+    token_request = request_id_ctx.set(request_id)
+    token_path = path_ctx.set(request.url.path)
+    token_method = method_ctx.set(request.method)
+    client_ip = get_client_ip(request)
+    token_client_ip = client_ip_ctx.set(client_ip)
+
+    claims = None
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        claims = verify_session(token)
+    user_id = claims.get("user_id") if claims else None
+    token_user = user_id_ctx.set(user_id)
+    if user_id is not None:
+        request.state.user_id = user_id
+
     try:
+        if rate_limiter and request.method != "OPTIONS" and request.url.path not in RATE_LIMIT_EXEMPT_PATHS:
+            key = f"user:{user_id}" if user_id is not None else f"ip:{client_ip or 'unknown'}"
+            allowed, retry_after = rate_limiter.allow(key)
+            if not allowed:
+                response = JSONResponse(
+                    status_code=429,
+                    content={"detail": "Rate limit exceeded", "request_id": request_id},
+                    headers={"Retry-After": str(retry_after)},
+                )
+                return response
+
         response = await call_next(request)
         return response
     finally:
         duration_ms = (time.perf_counter() - start) * 1000
-        path = request.url.path
-        method = request.method
-        status = getattr(response, "status_code", "unknown")
-        print(f"{method} {path} -> {status} ({duration_ms:.1f} ms)")
+        status = response.status_code if response else 500
+        logger.info(
+            "request_complete",
+            extra={
+                "event": "http_request",
+                "status": status,
+                "latency_ms": round(duration_ms, 2),
+                "path": request.url.path,
+                "method": request.method,
+                "client_ip": client_ip,
+                "request_id": request_id,
+                "user_id": user_id,
+            },
+        )
+        if response is not None:
+            response.headers["x-request-id"] = request_id
+            origin = request.headers.get("origin")
+            acao = response.headers.get("access-control-allow-origin")
+            if origin and acao == "*":
+                response.headers["access-control-allow-origin"] = origin
+
+        request_id_ctx.reset(token_request)
+        path_ctx.reset(token_path)
+        method_ctx.reset(token_method)
+        client_ip_ctx.reset(token_client_ip)
+        user_id_ctx.reset(token_user)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = getattr(request.state, "request_id", None)
+    if exc.status_code >= 500:
+        logger.error("http_exception", extra={"event": "error", "status": exc.status_code, "error": str(exc.detail)})
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "request_id": request_id},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", None)
+    logger.exception("unhandled_exception", extra={"event": "error", "request_id": request_id})
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": request_id},
+    )
 
 # -----------------------------------------------------------
 # REQUEST & RESPONSE MODELS
@@ -392,6 +700,64 @@ class MessageOut(BaseModel):
     content: str
     created_at: str
 
+
+class ToolInfo(BaseModel):
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+    execution: str
+    enabled: bool
+    default_enabled: bool
+    allowed_for_model: bool
+
+
+class ToolToggleRequest(BaseModel):
+    enabled: bool
+
+
+class ToolCallRequest(BaseModel):
+    name: str
+    input: dict[str, Any] = Field(default_factory=dict)
+    model: str | None = None
+
+
+class ToolCallResponse(BaseModel):
+    result: dict[str, Any]
+
+
+class UserSettingsRequest(BaseModel):
+    theme_mode: Literal["light", "dark"] | None = None
+    gradient_start: str | None = None
+    gradient_end: str | None = None
+    gradient_angle: int | None = Field(default=None, ge=0, le=360)
+
+
+class UserSettingsResponse(BaseModel):
+    theme_mode: str
+    gradient_start: str
+    gradient_end: str
+    gradient_angle: int
+
+
+class ToolUsageOut(BaseModel):
+    id: int
+    user_id: int | None = None
+    tool_name: str
+    input: str | None = None
+    status: str
+    duration_ms: float | None = None
+    created_at: str
+
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str
+    model: str | None = None
+    negative_prompt: str | None = None
+    width: int | None = Field(default=None, ge=64, le=2048)
+    height: int | None = Field(default=None, ge=64, le=2048)
+    steps: int | None = Field(default=None, ge=1, le=150)
+    cfg_scale: float | None = Field(default=None, ge=0.0, le=30.0)
+
 # -----------------------------------------------------------
 # INTERNAL HELPERS
 # -----------------------------------------------------------
@@ -433,16 +799,18 @@ def call_lm_studio(
         payload["top_p"] = top_p
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
-    last_error = None
     for attempt in range(max_retries + 1):
         try:
             response = requests.post(lm_studio_url, json=payload, timeout=timeout_seconds)
             response.raise_for_status()
             break
         except Exception as exc:
-            last_error = exc
             if attempt >= max_retries:
                 detail = response.text if 'response' in locals() and response is not None else str(exc)
+                logger.error(
+                    "lm_studio_request_failed",
+                    extra={"event": "lm_studio", "error": detail, "model": selected_model},
+                )
                 raise HTTPException(status_code=502, detail=f"LM Studio upstream error: {detail}")
             time.sleep(0.5 * (attempt + 1))
 
@@ -453,8 +821,10 @@ def call_lm_studio(
         reply_text = choices[0].get("message", {}).get("content", "") or ""
 
     if reply_text == "":
-        # Surface more debug info to the server logs
-        print("WARNING: LM Studio returned no text. Raw data:", data)
+        logger.warning(
+            "lm_studio_empty_response",
+            extra={"event": "lm_studio", "model": selected_model},
+        )
 
     return reply_text
 
@@ -480,8 +850,102 @@ def list_lm_studio_models() -> list[str]:
         model_list = [m.get("id") for m in data.get("data", []) if m.get("id")]
         return model_list
     except Exception as exc:
-        print("ERROR fetching LM Studio models:", str(exc))
+        logger.error("lm_studio_model_list_failed", extra={"event": "lm_studio", "error": str(exc)})
         raise HTTPException(status_code=502, detail=f"LM Studio model list failed: {str(exc)}")
+
+
+def build_tool_info(tool, enabled: bool, model: str | None) -> ToolInfo:
+    allowed = tool.name in allowed_tools_for_model(model)
+    return ToolInfo(
+        name=tool.name,
+        description=tool.description,
+        input_schema=tool.input_schema(),
+        execution=tool.execution,
+        enabled=enabled,
+        default_enabled=tool.default_enabled,
+        allowed_for_model=allowed,
+    )
+
+
+def ensure_tool_allowed(tool_name: str, user_id: int, model: str | None) -> None:
+    tool = TOOL_REGISTRY.get(tool_name)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    allowed = tool_name in allowed_tools_for_model(model)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Tool not allowed for this model")
+
+    conn = get_db()
+    prefs = list_user_tool_preferences(conn, user_id)
+    conn.close()
+    enabled = prefs.get(tool_name, tool.default_enabled)
+    if not enabled:
+        raise HTTPException(status_code=403, detail="Tool disabled for this user")
+
+
+def execute_tool(tool_name: str, input_payload: dict[str, Any], user_id: int | None, model: str | None):
+    tool = TOOL_REGISTRY.get(tool_name)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+
+    if tool.execution != "in_process":
+        raise HTTPException(status_code=501, detail="Tool execution via MCP Docker is not configured")
+
+    try:
+        payload = tool.input_model(**input_payload)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid tool input: {str(exc)}")
+
+    start = time.perf_counter()
+    status = "ok"
+    result: dict[str, Any] | None = None
+    try:
+        result = tool.invoke(payload)
+        return result
+    except Exception as exc:
+        status = "error"
+        logger.exception("tool_execution_failed", extra={"event": "tool", "tool": tool_name, "error": str(exc)})
+        raise HTTPException(status_code=500, detail="Tool execution failed")
+    finally:
+        duration_ms = (time.perf_counter() - start) * 1000
+        try:
+            conn = get_db()
+            record_tool_usage(conn, user_id, tool_name, input_payload, status, duration_ms)
+            conn.close()
+        except Exception as exc:
+            logger.warning("tool_usage_log_failed", extra={"event": "tool", "tool": tool_name, "error": str(exc)})
+
+
+def generate_stable_diffusion_images(payload: ImageGenerateRequest) -> list[str]:
+    if not SD_WEBUI_URL:
+        raise HTTPException(status_code=501, detail="Stable Diffusion backend not configured")
+
+    url = SD_WEBUI_URL.rstrip("/") + "/sdapi/v1/txt2img"
+    request_payload = {
+        "prompt": payload.prompt,
+        "steps": payload.steps or SD_WEBUI_STEPS,
+        "cfg_scale": payload.cfg_scale or SD_WEBUI_CFG_SCALE,
+        "width": payload.width or SD_WEBUI_WIDTH,
+        "height": payload.height or SD_WEBUI_HEIGHT,
+        "sampler_name": SD_WEBUI_SAMPLER,
+    }
+    if payload.negative_prompt:
+        request_payload["negative_prompt"] = payload.negative_prompt
+    if payload.model:
+        request_payload["override_settings"] = {"sd_model_checkpoint": payload.model}
+
+    try:
+        response = requests.post(url, json=request_payload, timeout=SD_WEBUI_TIMEOUT)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as exc:
+        logger.error("image_generation_failed", extra={"event": "image", "error": str(exc)})
+        raise HTTPException(status_code=502, detail="Image generation failed")
+
+    images = data.get("images") or []
+    if not images:
+        raise HTTPException(status_code=502, detail="Image generation returned no images")
+    return images
 
 # -----------------------------------------------------------
 # HEALTH CHECK
@@ -506,7 +970,15 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
     if request.use_search or request.search_query:
         try:
             query = request.search_query or request.message
-            search_snippets = web_search(query, max_results=5)
+            model_for_tools = request.model or os.environ.get("LM_STUDIO_MODEL")
+            ensure_tool_allowed("web_search", user["id"], model_for_tools)
+            tool_result = execute_tool(
+                "web_search",
+                {"query": query, "max_results": 5},
+                user_id=user["id"],
+                model=model_for_tools,
+            )
+            search_snippets = tool_result.get("results", [])
             tool_context = "\n".join(
                 f"- {item['title']} - {item['snippet']}" for item in search_snippets
             )
@@ -515,8 +987,10 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
                 f"Web search results for '{query}':\n{tool_context}\n"
                 "Use these results to answer concisely."
             )
+        except HTTPException:
+            raise
         except Exception as e:
-            print("WARNING: web search failed:", str(e))
+            logger.warning("web_search_failed", extra={"event": "tool", "tool": "web_search", "error": str(e)})
             # Continue without search context
 
     try:
@@ -537,7 +1011,7 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
         # Already an HTTP-friendly error
         raise
     except Exception as e:
-        print("ERROR communicating with LM Studio:", str(e))
+        logger.error("lm_studio_error", extra={"event": "lm_studio", "error": str(e)})
         if conn:
             conn.close()
         raise HTTPException(
@@ -556,6 +1030,78 @@ async def get_models(user=Depends(require_user)):
     models = list_lm_studio_models()
     default_model = os.environ.get("LM_STUDIO_MODEL") or (models[0] if models else None)
     return ModelsResponse(models=models, default_model=default_model)
+
+# -----------------------------------------------------------
+# TOOLS
+# -----------------------------------------------------------
+@app.get("/api/tools", response_model=list[ToolInfo])
+async def list_tools(model: str | None = None, user=Depends(require_user)):
+    effective_model = model or os.environ.get("LM_STUDIO_MODEL")
+    conn = get_db()
+    prefs = list_user_tool_preferences(conn, user["id"])
+    conn.close()
+    tools: list[ToolInfo] = []
+    for tool in TOOL_REGISTRY.list_tools():
+        enabled = prefs.get(tool.name, tool.default_enabled)
+        tools.append(build_tool_info(tool, enabled, effective_model))
+    return tools
+
+
+@app.patch("/api/tools/{tool_name}", response_model=ToolInfo)
+async def update_tool(tool_name: str, payload: ToolToggleRequest, user=Depends(require_user)):
+    tool = TOOL_REGISTRY.get(tool_name)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    conn = get_db()
+    set_user_tool_preference(conn, user["id"], tool_name, payload.enabled)
+    conn.close()
+    return build_tool_info(tool, payload.enabled, os.environ.get("LM_STUDIO_MODEL"))
+
+
+@app.post("/api/tools/execute", response_model=ToolCallResponse)
+async def execute_tool_route(payload: ToolCallRequest, user=Depends(require_user)):
+    model = payload.model or os.environ.get("LM_STUDIO_MODEL")
+    ensure_tool_allowed(payload.name, user["id"], model)
+    result = execute_tool(payload.name, payload.input, user_id=user["id"], model=model)
+    return ToolCallResponse(result=result)
+
+
+# -----------------------------------------------------------
+# USER SETTINGS
+# -----------------------------------------------------------
+@app.get("/api/settings", response_model=UserSettingsResponse)
+async def get_settings(user=Depends(require_user)):
+    conn = get_db()
+    settings = get_user_settings(conn, user["id"])
+    conn.close()
+    if not settings:
+        settings = {
+            "theme_mode": DEFAULT_THEME_MODE,
+            "gradient_start": DEFAULT_GRADIENT_START,
+            "gradient_end": DEFAULT_GRADIENT_END,
+            "gradient_angle": DEFAULT_GRADIENT_ANGLE,
+        }
+    return UserSettingsResponse(**settings)
+
+
+@app.put("/api/settings", response_model=UserSettingsResponse)
+async def update_settings(payload: UserSettingsRequest, user=Depends(require_user)):
+    updates = payload.model_dump(exclude_none=True) if hasattr(payload, "model_dump") else payload.dict(exclude_none=True)
+    if "gradient_start" in updates and not is_valid_hex_color(updates["gradient_start"]):
+        raise HTTPException(status_code=400, detail="Invalid gradient_start color")
+    if "gradient_end" in updates and not is_valid_hex_color(updates["gradient_end"]):
+        raise HTTPException(status_code=400, detail="Invalid gradient_end color")
+    conn = get_db()
+    current = get_user_settings(conn, user["id"]) or {
+        "theme_mode": DEFAULT_THEME_MODE,
+        "gradient_start": DEFAULT_GRADIENT_START,
+        "gradient_end": DEFAULT_GRADIENT_END,
+        "gradient_angle": DEFAULT_GRADIENT_ANGLE,
+    }
+    current.update(updates)
+    upsert_user_settings(conn, user["id"], current)
+    conn.close()
+    return UserSettingsResponse(**current)
 
 # -----------------------------------------------------------
 # THREADS & MESSAGES
@@ -656,12 +1202,27 @@ async def list_users_route(admin=Depends(require_admin)):
     conn.close()
     return [UserOut(**u) for u in users]
 
+
+@app.get("/api/admin/tool-usage", response_model=list[ToolUsageOut])
+async def admin_tool_usage(limit: int = 50, admin=Depends(require_admin)):
+    conn = get_db()
+    usage = list_tool_usage(conn, limit=limit)
+    conn.close()
+    return [ToolUsageOut(**u) for u in usage]
+
 # -----------------------------------------------------------
 # IMAGE GENERATION (placeholder)
 # -----------------------------------------------------------
 @app.post("/api/image/generate")
-async def generate_image(payload: dict, user=Depends(require_user)):
-    raise HTTPException(status_code=501, detail="Image generation is not implemented yet")
+async def generate_image(payload: ImageGenerateRequest, user=Depends(require_user)):
+    images = generate_stable_diffusion_images(payload)
+    return {"images": images}
+
+
+# -----------------------------------------------------------
+# METRICS
+# -----------------------------------------------------------
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 
 # Ensure tables exist on import

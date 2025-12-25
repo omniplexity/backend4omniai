@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: ai-webui
+data:
+  LM_STUDIO_URL: "http://host.docker.internal:11434/v1/chat/completions"
+  LM_STUDIO_MODEL: "qwen3-vl-4b-thinking-1m"
+  LM_STUDIO_TIMEOUT: "120"
+  LM_STUDIO_RETRIES: "2"
+  ALLOWED_ORIGINS: "https://omniplexity.github.io,https://rossie-chargeful-plentifully.ngrok-free.dev,https://localhost,http://localhost"
+  SESSION_HOURS: "8"
+  DB_PATH: "/app/data/app.db"
+  LOG_LEVEL: "INFO"
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_WINDOW_SECONDS: "60"
+  RATE_LIMIT_MAX_REQUESTS: "120"
+  DEFAULT_THEME_MODE: "light"
+  DEFAULT_GRADIENT_START: "#0b84ff"
+  DEFAULT_GRADIENT_END: "#0c9eff"
+  DEFAULT_GRADIENT_ANGLE: "140"
+  DEFAULT_ALLOWED_TOOLS: "web_search"
+  # MODEL_TOOL_ALLOWLIST: '{"*": ["web_search"]}'
+  SD_WEBUI_URL: ""
+  SD_WEBUI_TIMEOUT: "120"
+  SD_WEBUI_STEPS: "30"
+  SD_WEBUI_CFG_SCALE: "7"
+  SD_WEBUI_WIDTH: "512"
+  SD_WEBUI_HEIGHT: "512"
+  SD_WEBUI_SAMPLER: "Euler a"
