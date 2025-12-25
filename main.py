@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -836,6 +836,78 @@ async def call_lm_studio(
     return reply_text
 
 
+async def stream_lm_studio(
+    user_message: str,
+    model: str | None = None,
+    system_prompt: str | None = None,
+    temperature: float | None = None,
+    top_p: float | None = None,
+    max_tokens: int | None = None,
+):
+    lm_studio_url = os.environ.get(
+        "LM_STUDIO_URL",
+        "http://10.0.0.198:11434/v1/chat/completions"
+    )
+    timeout_seconds = float(os.environ.get("LM_STUDIO_TIMEOUT", "120"))
+    max_retries = int(os.environ.get("LM_STUDIO_RETRIES", "2"))
+
+    selected_model = model or os.environ.get(
+        "LM_STUDIO_MODEL",
+        "qwen3-vl-4b-thinking-1m"
+    )
+
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_message})
+
+    payload = {
+        "model": selected_model,
+        "messages": messages,
+        "stream": True,
+    }
+
+    if temperature is not None:
+        payload["temperature"] = temperature
+    if top_p is not None:
+        payload["top_p"] = top_p
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+
+    response = None
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        for attempt in range(max_retries + 1):
+            try:
+                async with client.stream("POST", lm_studio_url, json=payload) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[len("data:"):].strip()
+                        if data == "[DONE]":
+                            return
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        delta = (chunk.get("choices") or [{}])[0].get("delta") or {}
+                        content = delta.get("content")
+                        if content:
+                            yield content
+                return
+            except httpx.HTTPError as exc:
+                if attempt >= max_retries:
+                    resp = getattr(exc, "response", None) or response
+                    detail = resp.text if resp is not None else str(exc)
+                    logger.error(
+                        "lm_studio_stream_failed",
+                        extra={"event": "lm_studio", "error": detail, "model": selected_model},
+                    )
+                    raise HTTPException(status_code=502, detail=f"LM Studio upstream error: {detail}")
+                await asyncio.sleep(0.5 * (attempt + 1))
+
 async def list_lm_studio_models() -> list[str]:
     """
     Query the LM Studio OpenAI-compatible /v1/models endpoint.
@@ -971,6 +1043,7 @@ async def root():
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, user=Depends(require_user)):
     user_message = request.message
+    original_message = request.message
     thread_id = request.thread_id
     conn = None
     if thread_id is not None:
@@ -1014,7 +1087,7 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
             max_tokens=request.max_tokens,
         )
         if thread_id is not None:
-            append_message(conn, thread_id, user["id"], "user", request.message)
+            append_message(conn, thread_id, user["id"], "user", original_message)
             append_message(conn, thread_id, user["id"], "assistant", reply_text)
             conn.close()
         return ChatResponse(response=reply_text)
@@ -1029,6 +1102,77 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
             status_code=500,
             detail=f"LM Studio error: {str(e)}"
         )
+
+# Streamed chat endpoint (plain text chunks)
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest, user=Depends(require_user)):
+    user_message = request.message
+    original_message = request.message
+    thread_id = request.thread_id
+    conn = None
+    if thread_id is not None:
+        conn = get_db()
+        ensure_thread_owner(conn, thread_id, user["id"])
+
+    if request.use_search or request.search_query:
+        try:
+            query = request.search_query or request.message
+            model_for_tools = request.model or os.environ.get("LM_STUDIO_MODEL")
+            ensure_tool_allowed("web_search", user["id"], model_for_tools)
+            tool_result = await execute_tool(
+                "web_search",
+                {"query": query, "max_results": 5},
+                user_id=user["id"],
+                model=model_for_tools,
+            )
+            search_snippets = tool_result.get("results", [])
+            tool_context = "\n".join(
+                f"- {item['title']} - {item['snippet']}" for item in search_snippets
+            )
+            user_message = (
+                f"{request.message}\n\n"
+                f"Web search results for '{query}':\n{tool_context}\n"
+                "Use these results to answer concisely."
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("web_search_failed", extra={"event": "tool", "tool": "web_search", "error": str(e)})
+
+    async def event_stream():
+        reply_chunks: list[str] = []
+        cancelled = False
+        try:
+            async for chunk in stream_lm_studio(
+                user_message=user_message,
+                model=request.model,
+                system_prompt=request.system_prompt,
+                temperature=request.temperature,
+                top_p=request.top_p,
+                max_tokens=request.max_tokens,
+            ):
+                reply_chunks.append(chunk)
+                yield chunk
+        except asyncio.CancelledError:
+            cancelled = True
+            logger.info("lm_studio_stream_cancelled", extra={"event": "lm_studio", "user_id": user["id"]})
+            raise
+        except HTTPException as exc:
+            logger.error("lm_studio_stream_error", extra={"event": "lm_studio", "error": str(exc.detail)})
+            yield f"\n[Error: {exc.detail}]"
+        except Exception as exc:
+            logger.error("lm_studio_stream_error", extra={"event": "lm_studio", "error": str(exc)})
+            yield "\n[Error: LM Studio stream failed]"
+        finally:
+            if conn:
+                try:
+                    if not cancelled and reply_chunks:
+                        append_message(conn, thread_id, user["id"], "user", original_message)
+                        append_message(conn, thread_id, user["id"], "assistant", "".join(reply_chunks))
+                finally:
+                    conn.close()
+
+    return StreamingResponse(event_stream(), media_type="text/plain")
 
 # Convenience alias: POST / forwards to /api/chat to avoid 405s from misconfigured clients
 @app.post("/", response_model=ChatResponse)
