@@ -23,7 +23,7 @@ class ToolBase:
     execution: Literal["in_process", "mcp_docker"] = "in_process"
     default_enabled: bool = True
 
-    def invoke(self, data: BaseModel) -> Dict[str, Any]:
+    async def invoke(self, data: BaseModel) -> Dict[str, Any]:
         raise NotImplementedError
 
     def input_schema(self) -> Dict[str, Any]:
@@ -40,8 +40,8 @@ class WebSearchTool(ToolBase):
     execution = "in_process"
     default_enabled = True
 
-    def invoke(self, data: WebSearchInput) -> Dict[str, Any]:
-        results = web_search(data.query, max_results=data.max_results)
+    async def invoke(self, data: WebSearchInput) -> Dict[str, Any]:
+        results = await web_search(data.query, max_results=data.max_results)
         return {"results": results}
 
 

@@ -5,7 +5,7 @@ router = APIRouter()
 
 @router.post("/chat")
 async def chat(prompt: str = Form(...)):
-    response = query_lm_studio(prompt)
+    response = await query_lm_studio(prompt)
     return {"response": response}
 
 @router.post("/vision")
@@ -14,5 +14,5 @@ async def vision_query(
     image: UploadFile = File(...)
 ):
     content = await image.read()
-    response = query_lm_studio(prompt, image_bytes=content)
+    response = await query_lm_studio(prompt, image_bytes=content)
     return {"response": response}

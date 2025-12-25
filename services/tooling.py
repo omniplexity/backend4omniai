@@ -1,18 +1,19 @@
 import re
 from typing import List, Dict
 
-import requests
+import httpx
 
 
-def web_search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+async def web_search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
     """
     Lightweight DuckDuckGo lite search scraper. Returns a small set of results
     without needing an API key. Intended as a simple "tool" to enrich model context.
     """
     url = "https://lite.duckduckgo.com/lite/"
     params = {"q": query}
-    resp = requests.post(url, data=params, timeout=10)
-    resp.raise_for_status()
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(url, data=params)
+        resp.raise_for_status()
 
     # DuckDuckGo lite returns anchor tags with class=result-link
     links = re.findall(

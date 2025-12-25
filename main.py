@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 import hmac
@@ -7,12 +8,13 @@ import hashlib
 import sqlite3
 import secrets
 import re
+import inspect
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 from threading import Lock
 from typing import Any, Literal
 
-import requests
+import httpx
 from fastapi import FastAPI, Request, HTTPException, Depends, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -761,7 +763,7 @@ class ImageGenerateRequest(BaseModel):
 # -----------------------------------------------------------
 # INTERNAL HELPERS
 # -----------------------------------------------------------
-def call_lm_studio(
+async def call_lm_studio(
     user_message: str,
     model: str | None = None,
     system_prompt: str | None = None,
@@ -799,20 +801,24 @@ def call_lm_studio(
         payload["top_p"] = top_p
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
-    for attempt in range(max_retries + 1):
-        try:
-            response = requests.post(lm_studio_url, json=payload, timeout=timeout_seconds)
-            response.raise_for_status()
-            break
-        except Exception as exc:
-            if attempt >= max_retries:
-                detail = response.text if 'response' in locals() and response is not None else str(exc)
-                logger.error(
-                    "lm_studio_request_failed",
-                    extra={"event": "lm_studio", "error": detail, "model": selected_model},
-                )
-                raise HTTPException(status_code=502, detail=f"LM Studio upstream error: {detail}")
-            time.sleep(0.5 * (attempt + 1))
+    response = None
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        for attempt in range(max_retries + 1):
+            response = None
+            try:
+                response = await client.post(lm_studio_url, json=payload)
+                response.raise_for_status()
+                break
+            except httpx.HTTPError as exc:
+                if attempt >= max_retries:
+                    resp = getattr(exc, "response", None) or response
+                    detail = resp.text if resp is not None else str(exc)
+                    logger.error(
+                        "lm_studio_request_failed",
+                        extra={"event": "lm_studio", "error": detail, "model": selected_model},
+                    )
+                    raise HTTPException(status_code=502, detail=f"LM Studio upstream error: {detail}")
+                await asyncio.sleep(0.5 * (attempt + 1))
 
     data = response.json()
     choices = data.get("choices") or []
@@ -829,7 +835,7 @@ def call_lm_studio(
     return reply_text
 
 
-def list_lm_studio_models() -> list[str]:
+async def list_lm_studio_models() -> list[str]:
     """
     Query the LM Studio OpenAI-compatible /v1/models endpoint.
     """
@@ -844,11 +850,12 @@ def list_lm_studio_models() -> list[str]:
         base = lm_studio_url.rstrip("/") + "/v1/models"
 
     try:
-        resp = requests.get(base, timeout=8)
-        resp.raise_for_status()
-        data = resp.json()
-        model_list = [m.get("id") for m in data.get("data", []) if m.get("id")]
-        return model_list
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(base)
+            resp.raise_for_status()
+            data = resp.json()
+            model_list = [m.get("id") for m in data.get("data", []) if m.get("id")]
+            return model_list
     except Exception as exc:
         logger.error("lm_studio_model_list_failed", extra={"event": "lm_studio", "error": str(exc)})
         raise HTTPException(status_code=502, detail=f"LM Studio model list failed: {str(exc)}")
@@ -883,7 +890,7 @@ def ensure_tool_allowed(tool_name: str, user_id: int, model: str | None) -> None
         raise HTTPException(status_code=403, detail="Tool disabled for this user")
 
 
-def execute_tool(tool_name: str, input_payload: dict[str, Any], user_id: int | None, model: str | None):
+async def execute_tool(tool_name: str, input_payload: dict[str, Any], user_id: int | None, model: str | None):
     tool = TOOL_REGISTRY.get(tool_name)
     if not tool:
         raise HTTPException(status_code=404, detail="Tool not found")
@@ -901,6 +908,8 @@ def execute_tool(tool_name: str, input_payload: dict[str, Any], user_id: int | N
     result: dict[str, Any] | None = None
     try:
         result = tool.invoke(payload)
+        if inspect.isawaitable(result):
+            result = await result
         return result
     except Exception as exc:
         status = "error"
@@ -916,7 +925,7 @@ def execute_tool(tool_name: str, input_payload: dict[str, Any], user_id: int | N
             logger.warning("tool_usage_log_failed", extra={"event": "tool", "tool": tool_name, "error": str(exc)})
 
 
-def generate_stable_diffusion_images(payload: ImageGenerateRequest) -> list[str]:
+async def generate_stable_diffusion_images(payload: ImageGenerateRequest) -> list[str]:
     if not SD_WEBUI_URL:
         raise HTTPException(status_code=501, detail="Stable Diffusion backend not configured")
 
@@ -935,9 +944,10 @@ def generate_stable_diffusion_images(payload: ImageGenerateRequest) -> list[str]
         request_payload["override_settings"] = {"sd_model_checkpoint": payload.model}
 
     try:
-        response = requests.post(url, json=request_payload, timeout=SD_WEBUI_TIMEOUT)
-        response.raise_for_status()
-        data = response.json()
+        async with httpx.AsyncClient(timeout=SD_WEBUI_TIMEOUT) as client:
+            response = await client.post(url, json=request_payload)
+            response.raise_for_status()
+            data = response.json()
     except Exception as exc:
         logger.error("image_generation_failed", extra={"event": "image", "error": str(exc)})
         raise HTTPException(status_code=502, detail="Image generation failed")
@@ -972,7 +982,7 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
             query = request.search_query or request.message
             model_for_tools = request.model or os.environ.get("LM_STUDIO_MODEL")
             ensure_tool_allowed("web_search", user["id"], model_for_tools)
-            tool_result = execute_tool(
+            tool_result = await execute_tool(
                 "web_search",
                 {"query": query, "max_results": 5},
                 user_id=user["id"],
@@ -994,7 +1004,7 @@ async def chat(request: ChatRequest, user=Depends(require_user)):
             # Continue without search context
 
     try:
-        reply_text = call_lm_studio(
+        reply_text = await call_lm_studio(
             user_message=user_message,
             model=request.model,
             system_prompt=request.system_prompt,
@@ -1027,7 +1037,7 @@ async def chat_root_alias(request: ChatRequest, user=Depends(require_user)):
 
 @app.get("/api/models", response_model=ModelsResponse)
 async def get_models(user=Depends(require_user)):
-    models = list_lm_studio_models()
+    models = await list_lm_studio_models()
     default_model = os.environ.get("LM_STUDIO_MODEL") or (models[0] if models else None)
     return ModelsResponse(models=models, default_model=default_model)
 
@@ -1062,7 +1072,7 @@ async def update_tool(tool_name: str, payload: ToolToggleRequest, user=Depends(r
 async def execute_tool_route(payload: ToolCallRequest, user=Depends(require_user)):
     model = payload.model or os.environ.get("LM_STUDIO_MODEL")
     ensure_tool_allowed(payload.name, user["id"], model)
-    result = execute_tool(payload.name, payload.input, user_id=user["id"], model=model)
+    result = await execute_tool(payload.name, payload.input, user_id=user["id"], model=model)
     return ToolCallResponse(result=result)
 
 
@@ -1215,7 +1225,7 @@ async def admin_tool_usage(limit: int = 50, admin=Depends(require_admin)):
 # -----------------------------------------------------------
 @app.post("/api/image/generate")
 async def generate_image(payload: ImageGenerateRequest, user=Depends(require_user)):
-    images = generate_stable_diffusion_images(payload)
+    images = await generate_stable_diffusion_images(payload)
     return {"images": images}
 
 

@@ -1,8 +1,8 @@
-import requests
+import httpx
 
 LM_STUDIO_URL = "http://10.0.0.198:11434/v1/chat/completions"  # Modify if needed
 
-def query_lm_studio(prompt: str, image_bytes: bytes = None):
+async def query_lm_studio(prompt: str, image_bytes: bytes = None):
     headers = {"Content-Type": "application/json"}
 
     data = {
@@ -18,9 +18,10 @@ def query_lm_studio(prompt: str, image_bytes: bytes = None):
         data["messages"][0]["images"] = [b64]
 
     try:
-        response = requests.post(LM_STUDIO_URL, json=data, headers=headers)
-        result = response.json()
-
-        return result["choices"][0]["message"]["content"]
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(LM_STUDIO_URL, json=data, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+            return result["choices"][0]["message"]["content"]
     except Exception as e:
         return f"Error communicating with LM Studio: {str(e)}"
