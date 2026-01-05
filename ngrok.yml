@@ -1,6 +1,10 @@
 version: "2"
+
 tunnels:
   backend:
     proto: http
-    addr: backend:8000
-    pooling_enabled: true
+    addr: http://backend:8000
+    host_header: rewrite
+    inspect: false
+    basic_auth:
+      - "omni:KTH-U_wOHfEOLGpE"
