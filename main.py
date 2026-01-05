@@ -44,6 +44,7 @@ raw_origins = [
     ).split(",")
     if origin.strip()
 ]
+allow_null_origin = os.environ.get("ALLOW_NULL_ORIGIN", "false").lower() in ("1", "true", "yes")
 
 # Allow an "*" entry in ALLOWED_ORIGINS but still echo the caller's Origin
 # header so credentialed requests are permitted. Browsers reject credentials
@@ -57,6 +58,10 @@ for origin in raw_origins:
         allow_origin_regex = r"https?://.*"
         continue
     allowed_origins.append(cleaned)
+
+# Allow file:// origins in dev if explicitly enabled.
+if allow_null_origin and "null" not in allowed_origins:
+    allowed_origins.append("null")
 
 # Always allow localhost/127.0.0.1 on any port for dev, unless a broader regex is already provided.
 if allow_origin_regex is None:

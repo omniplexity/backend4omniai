@@ -6,5 +6,7 @@ tunnels:
     addr: http://backend:8000
     host_header: rewrite
     inspect: false
-    basic_auth:
-      - "omni:KTH-U_wOHfEOLGpE"
+    # Basic auth breaks browser CORS preflight (OPTIONS), so keep it disabled
+    # when the frontend is calling the API from a browser.
+    # basic_auth:
+    #   - "omni:KTH-U_wOHfEOLGpE"
