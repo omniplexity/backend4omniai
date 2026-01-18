@@ -1,0 +1,57 @@
+# OmniAI Docker Compose - Production Deployment
+# Runs FastAPI backend + ngrok tunnel sidecar
+#
+# Usage:
+#   1. cp .env.example .env && edit .env (add NGROK_AUTHTOKEN)
+#   2. docker compose up -d
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.backend
+    container_name: omniai-backend
+    env_file:
+      - .env
+    environment:
+      # Database path inside container (volume-mounted)
+      - DATABASE_URL=sqlite:////app/data/omniplexity.db
+    volumes:
+      # Persist SQLite database
+      - ../../data:/app/data
+    # Linux compatibility: enables host.docker.internal for LLM providers on host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+    restart: unless-stopped
+    # NO ports published to host - access only via ngrok tunnel
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8787/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: omniai-ngrok
+    command:
+      - "http"
+      - "http://backend:8787"
+      - "--request-header-add=X-Origin-Secret:${ORIGIN_LOCK_SECRET}"
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+    # Expose ngrok web interface for URL inspection (optional, localhost only)
+    ports:
+      - "127.0.0.1:4040:4040"
+
+networks:
+  internal:
+    driver: bridge

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo:*)",
+      "Bash(docker compose:*)",
+      "Bash(copy:*)",
+      "Bash(python:*)",
+      "Bash(where.exe:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}

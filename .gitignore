@@ -24,3 +24,6 @@ coverage.xml
 *.sqlite
 *.sqlite3
 .DS_Store
+
+# Docker deployment secrets
+deploy/docker/.env

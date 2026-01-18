@@ -169,3 +169,75 @@ sqlite3 backend/data/omniplexity.db .backup backup.db
 ### Database Restore
 ```bash
 sqlite3 backend/data/omniplexity.db < backup.sql
+```
+
+## Docker Compose (Always-On) Deployment
+
+For production deployments with automatic restarts, use the Docker Compose setup in `deploy/docker/`.
+
+### Architecture
+
+- **backend container**: FastAPI/Uvicorn, runs migrations on start, binds to `0.0.0.0:8787` inside container
+- **ngrok sidecar**: Waits for backend healthy, proxies `http://backend:8787`, injects `X-Origin-Secret` header
+- **No host ports published**: Backend only reachable via tunnel
+- **SQLite persistence**: Database mounted from `data/` directory
+
+### Quick Start
+
+1. Get ngrok auth token from https://dashboard.ngrok.com/get-started/your-authtoken
+
+2. Configure environment:
+
+**Windows PowerShell:**
+```powershell
+cd deploy\docker
+copy .env.example .env
+notepad .env  # Add NGROK_AUTHTOKEN and generate secrets
+docker compose up -d
+```
+
+**macOS / Linux:**
+```bash
+cd deploy/docker
+cp .env.example .env
+nano .env  # Add NGROK_AUTHTOKEN and generate secrets
+docker compose up -d
+```
+
+3. Get tunnel URL: `docker compose logs ngrok` or visit http://localhost:4040
+
+4. Add ngrok URL to `CORS_ORIGINS` in `.env` and restart: `docker compose restart backend`
+
+### Production Checklist
+
+```env
+NGROK_AUTHTOKEN=<your-token>
+ORIGIN_LOCK_ENABLED=true
+ORIGIN_LOCK_SECRET=<generated-secret>
+COOKIE_SECURE=true
+COOKIE_SAMESITE=None
+CORS_ORIGINS=["https://omniplexity.github.io","https://your-ngrok-url.ngrok-free.app"]
+```
+
+### Commands
+
+```bash
+docker compose up -d          # Start
+docker compose down           # Stop
+docker compose logs -f        # All logs
+docker compose logs ngrok     # Get tunnel URL
+docker compose ps             # Status
+docker compose restart        # Restart
+docker compose build backend  # Rebuild after code changes
+```
+
+### Troubleshooting
+
+| Issue | Check |
+|-------|-------|
+| Cookies not set | `COOKIE_SECURE=true`, `COOKIE_SAMESITE=None` |
+| Origin lock 403 | `ORIGIN_LOCK_SECRET` is set, restart ngrok |
+| ngrok not starting | `NGROK_AUTHTOKEN` is set correctly |
+| LLM unreachable | Use `host.docker.internal` for host services |
+
+See [deploy/docker/README.md](deploy/docker/README.md) for full documentation.
