@@ -89,14 +89,14 @@
                     </div>
                 </div>
                 <div id="transcript" class="transcript-wrap" role="log" aria-live="polite" aria-label="Chat transcript"></div>
-                <div id="composer" class="composer-wrap">
+                <div id="composer" class="composer composer-wrap">
                     <div id="input-area">
                         <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
                         <button id="send-btn" disabled aria-label="Send message">Send</button>
                         <button id="cancel-btn" class="hidden" aria-label="Cancel streaming">Cancel</button>
                         <button id="retry-btn" class="hidden" aria-label="Retry last message">Retry</button>
                     </div>
-                    <div id="status-line">
+                    <div id="status-line" class="statusline">
                         <span id="status-text">Ready</span>
                         <span id="elapsed-time"></span>
                         <span id="token-usage"></span>
@@ -105,7 +105,7 @@
             </main>
             </div>
 
-            <div id="settingsDrawer" class="hidden" role="dialog" aria-labelledby="settings-title" aria-modal="true">
+            <div id="settingsDrawer" class="drawer hidden" role="dialog" aria-labelledby="settings-title" aria-modal="true">
                 <div id="settings-header">
                     <h2 id="settings-title">Settings</h2>
                     <button id="close-settings-btn" aria-label="Close settings">×</button>

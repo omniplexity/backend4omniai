@@ -1026,10 +1026,15 @@ function bindUI() {
 
     // Message sending
     on('send-btn', 'click', () => {
-        debugLog('SEND_CLICK');
+        debugLog('SEND_CLICK', { currentConversationId, providerId: getSelectedProvider(), modelId: getSelectedModel() });
+        if (!currentConversationId) {
+            showError('No conversation. Click New Chat first.');
+            return;
+        }
         sendMessage().catch(error => {
             debugLog('SEND_ERROR', { error: error.message });
             console.error('Send error:', error);
+            showError('Failed to send message: ' + error.message);
         });
     });
     on('message-input', 'keydown', (e) => {
@@ -1067,6 +1072,7 @@ function bindUI() {
         createNewConversation().catch(error => {
             debugLog('NEW_CHAT_ERROR', { error: error.message });
             console.error('New chat error:', error);
+            showError('Failed to create new conversation: ' + error.message);
         });
     });
 
