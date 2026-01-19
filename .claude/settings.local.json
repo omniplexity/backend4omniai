@@ -6,7 +6,13 @@
       "Bash(copy:*)",
       "Bash(python:*)",
       "Bash(where.exe:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker inspect:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ]
   }
 }

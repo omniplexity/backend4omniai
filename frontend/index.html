@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniAI WebUI</title>
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="login-view" class="view hidden">
+            <h1>Login to OmniAI</h1>
+            <form id="login-form">
+                <input type="text" id="username" placeholder="Username" required aria-label="Username">
+                <input type="password" id="password" placeholder="Password" required aria-label="Password">
+                <button type="submit">Login</button>
+            </form>
+            <div id="login-error" class="error hidden"></div>
+            <p><a href="#" id="show-register">Need an account? Register</a></p>
+        </div>
+
+        <div id="register-view" class="view hidden">
+            <h1>Register for OmniAI</h1>
+            <form id="register-form">
+                <input type="text" id="invite-code" placeholder="Invite Code" required aria-label="Invite Code">
+                <input type="text" id="reg-username" placeholder="Username" required aria-label="Username">
+                <input type="password" id="reg-password" placeholder="Password" required aria-label="Password">
+                <button type="submit">Register</button>
+            </form>
+            <div id="register-error" class="error hidden"></div>
+            <p><a href="#" id="show-login">Already have an account? Login</a></p>
+        </div>
+
+        <div id="chat-view" class="view hidden">
+            <div id="topbar">
+                <div id="topbar-left">
+                    <div id="logo">OmniAI</div>
+                    <div id="model-picker">
+                        <select id="provider-select" aria-label="Provider">
+                            <option value="">Select Provider</option>
+                        </select>
+                        <select id="model-select" aria-label="Model" disabled>
+                            <option value="">Select Model</option>
+                        </select>
+                    </div>
+                    <div id="run-settings-summary">Temp: 0.7, Top-P: 1, Max: 1024</div>
+                    <div id="connection-indicator" aria-label="Connection status">● Connected</div>
+                </div>
+                <div id="topbar-right">
+                    <div id="backend-url-setting">
+                        <label for="api-base-url">Backend URL:</label>
+                        <input type="text" id="api-base-url" placeholder="https://your-backend-url">
+                        <button id="save-url-btn">Save</button>
+                    </div>
+                    <button id="settings-btn" aria-label="Settings">⚙</button>
+                    <div id="user-info">
+                        <span id="user-display"></span>
+                        <button id="logout-btn" aria-label="Logout">Logout</button>
+                    </div>
+                    <a href="#admin" id="admin-link" class="hidden" aria-label="Admin panel">Admin</a>
+                </div>
+            </div>
+
+            <div id="sidebar" role="navigation" aria-label="Conversations">
+                <div id="sidebar-header">
+                    <button id="new-conversation-btn" aria-label="New conversation">New Chat</button>
+                    <input type="text" id="search-conversations" placeholder="Search conversations..." aria-label="Search conversations">
+                </div>
+                <ul id="conversations-list" role="list" aria-label="Conversation threads"></ul>
+            </div>
+
+            <main id="main">
+                <div id="chatHeader">
+                    <h1 id="chat-title">New Chat</h1>
+                    <div id="chat-actions">
+                        <button id="rename-chat-btn" aria-label="Rename conversation">Rename</button>
+                        <button id="delete-chat-btn" aria-label="Delete conversation">Delete</button>
+                    </div>
+                </div>
+                <div id="transcript" role="log" aria-live="polite" aria-label="Chat transcript"></div>
+                <div id="composer">
+                    <div id="input-area">
+                        <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
+                        <button id="send-btn" disabled aria-label="Send message">Send</button>
+                        <button id="cancel-btn" class="hidden" aria-label="Cancel streaming">Cancel</button>
+                        <button id="retry-btn" class="hidden" aria-label="Retry last message">Retry</button>
+                    </div>
+                </div>
+                <div id="status-line">
+                    <span id="status-text">Ready</span>
+                    <span id="elapsed-time"></span>
+                    <span id="token-usage"></span>
+                </div>
+            </main>
+
+            <div id="settingsDrawer" class="hidden" role="dialog" aria-labelledby="settings-title" aria-modal="true">
+                <div id="settings-header">
+                    <h2 id="settings-title">Settings</h2>
+                    <button id="close-settings-btn" aria-label="Close settings">×</button>
+                </div>
+                <div id="settings-content">
+                    <div id="run-settings">
+                        <h3>Run Settings</h3>
+                        <div class="setting-group">
+                            <label for="drawer-temperature">Temperature:</label>
+                            <input type="number" id="drawer-temperature" min="0" max="2" step="0.1">
+                        </div>
+                        <div class="setting-group">
+                            <label for="drawer-top-p">Top-P:</label>
+                            <input type="number" id="drawer-top-p" min="0" max="1" step="0.01">
+                        </div>
+                        <div class="setting-group">
+                            <label for="drawer-max-tokens">Max Tokens:</label>
+                            <input type="number" id="drawer-max-tokens" min="1">
+                        </div>
+                    </div>
+                    <div id="presets">
+                        <h3>Presets</h3>
+                        <select id="preset-select">
+                            <option value="">Select Preset</option>
+                        </select>
+                        <button id="save-preset-btn">Save as Preset</button>
+                        <button id="delete-preset-btn">Delete Preset</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="toastHost" aria-live="assertive" aria-atomic="true"></div>
+            <div id="modalHost"></div>
+
+            <div id="diagnostics" class="hidden">
+                <h3>Diagnostics</h3>
+                <button id="test-me">Test /auth/me</button>
+                <button id="test-providers">Test /providers</button>
+                <div id="diag-results"></div>
+            </div>
+        </div>
+
+        <div id="admin-view" class="view hidden">
+            <header>
+                <div id="admin-user-info">
+                    <span id="admin-user-display"></span>
+                    <button id="admin-logout-btn">Logout</button>
+                </div>
+                <a href="#chat">Back to Chat</a>
+            </header>
+
+            <div id="admin-container">
+                <nav id="admin-nav">
+                    <button id="admin-users-tab" class="active">Users</button>
+                    <button id="admin-invites-tab">Invites</button>
+                    <button id="admin-audit-tab">Audit Log</button>
+                    <button id="admin-quotas-tab">Quotas</button>
+                </nav>
+
+                <main id="admin-main">
+                    <div id="admin-users-section" class="admin-section">
+                        <h2>Users</h2>
+                        <table id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Display Name</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Last Login</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="admin-invites-section" class="admin-section hidden">
+                        <h2>Invites</h2>
+                        <button id="create-invite-btn">Create Invite</button>
+                        <table id="invites-table">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Created By</th>
+                                    <th>Used By</th>
+                                    <th>Expires</th>
+                                    <th>Revoked</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="invites-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="admin-audit-section" class="admin-section hidden">
+                        <h2>Audit Log</h2>
+                        <div id="audit-filters">
+                            <input type="text" id="audit-q" placeholder="Search target...">
+                            <select id="audit-action">
+                                <option value="">All Actions</option>
+                            </select>
+                            <input type="datetime-local" id="audit-since">
+                            <button id="audit-search-btn">Search</button>
+                        </div>
+                        <table id="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Action</th>
+                                    <th>Target</th>
+                                    <th>Actor</th>
+                                    <th>IP</th>
+                                    <th>Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <div id="admin-quotas-section" class="admin-section hidden">
+                        <h2>User Quotas</h2>
+                        <table id="quotas-table">
+                            <thead>
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Username</th>
+                                    <th>Messages/Day</th>
+                                    <th>Tokens/Day</th>
+                                    <th>Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="quotas-tbody"></tbody>
+                        </table>
+                    </div>
+                </main>
+            </div>
+        </div>
+
+        <div id="error-banner" class="hidden">
+            <span id="error-message"></span>
+            <button id="dismiss-error">×</button>
+        </div>
+
+        <div id="disconnect-banner" class="hidden">
+            <span>Disconnected from server. <button id="retry-stream">Retry</button></span>
+        </div>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/sse.js"></script>
+    <script src="js/store.js"></script>
+    <script src="js/render.js"></script>
+    <script src="js/admin.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
