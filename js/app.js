@@ -1,5 +1,13 @@
 // OmniAI WebUI Main Application Controller
 
+// Defensive DOM helpers - prevent crashes on missing elements
+const el = (id) => document.getElementById(id);
+const on = (id, evt, fn) => {
+    const n = el(id);
+    if (n) n.addEventListener(evt, fn);
+    else console.warn(`Element with id '${id}' not found, skipping event listener for '${evt}'`);
+};
+
 // Centralized State
 let state = {
     session: { user: null },
@@ -37,7 +45,7 @@ function renderTopbar() {
 
     // Connection indicator
     const indicator = document.getElementById('connection-indicator');
-    indicator.textContent = 'œ Connected'; // TODO: Update based on actual connection status
+    indicator.textContent = '‚óè Connected'; // TODO: Update based on actual connection status
 }
 
 function renderSidebar() {
@@ -105,7 +113,7 @@ function renderToasts() {
         toast.className = 'toast error';
         toast.innerHTML = `
             <div>Error: ${state.stream.lastError.message}</div>
-            <button onclick="this.parentElement.remove()">◊</button>
+            <button onclick="this.parentElement.remove()">ÔøΩ</button>
         `;
         toastHost.appendChild(toast);
     }
@@ -404,10 +412,10 @@ async function renameConversation(conversationId, currentTitle) {
     }
 }
 
-async function deleteConversation(conversationId) {
+async function deleteConversationUI(conversationId) {
     if (confirm('Are you sure you want to delete this conversation?')) {
         try {
-            await deleteConversation(conversationId);
+            await deleteConversation(conversationId); // Calls API function from api.js
             if (currentConversationId === conversationId) {
                 await createNewConversation();
             }
@@ -452,18 +460,29 @@ function updateSendButtonState() {
     sendBtn.disabled = !providerId || !modelId;
 }
 
-// Settings
-document.getElementById('temperature').addEventListener('input', (e) => {
+// Settings - use correct drawer element IDs with defensive helpers
+on('drawer-temperature', 'input', (e) => {
     setTemperature(parseFloat(e.target.value));
 });
 
-document.getElementById('top-p').addEventListener('input', (e) => {
+on('drawer-top-p', 'input', (e) => {
     setTopP(parseFloat(e.target.value));
 });
 
-document.getElementById('max-tokens').addEventListener('input', (e) => {
+on('drawer-max-tokens', 'input', (e) => {
     const value = e.target.value ? parseInt(e.target.value, 10) : null;
     setMaxTokens(value);
+});
+
+// Settings drawer open/close
+on('settings-btn', 'click', () => {
+    const drawer = el('settingsDrawer');
+    if (drawer) drawer.classList.remove('hidden');
+});
+
+on('close-settings-btn', 'click', () => {
+    const drawer = el('settingsDrawer');
+    if (drawer) drawer.classList.add('hidden');
 });
 
 // Message sending
@@ -630,6 +649,20 @@ document.getElementById('retry-stream').addEventListener('click', () => {
     // Retry would need to be implemented based on last message
 });
 
+// Conversation actions
+on('rename-chat-btn', 'click', () => {
+    if (currentConversationId) {
+        const activeThread = state.threads.find(t => t.id === currentConversationId);
+        renameConversation(currentConversationId, activeThread?.title);
+    }
+});
+
+on('delete-chat-btn', 'click', () => {
+    if (currentConversationId) {
+        deleteConversationUI(currentConversationId);
+    }
+});
+
 // Diagnostics
 document.getElementById('test-me').addEventListener('click', async () => {
     try {
@@ -646,6 +679,25 @@ document.getElementById('test-providers').addEventListener('click', async () => 
         document.getElementById('diag-results').textContent = JSON.stringify(result, null, 2);
     } catch (error) {
         document.getElementById('diag-results').textContent = 'Error: ' + error.message;
+    }
+});
+
+// Global error handlers - surface crashes to the user
+window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+    const errorDisplay = el('error-display');
+    if (errorDisplay) {
+        errorDisplay.textContent = `JavaScript Error: ${event.error?.message || 'Unknown error'}`;
+        errorDisplay.classList.remove('hidden');
+    }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    const errorDisplay = el('error-display');
+    if (errorDisplay) {
+        errorDisplay.textContent = `Promise Error: ${event.reason?.message || 'Unknown promise error'}`;
+        errorDisplay.classList.remove('hidden');
     }
 });
 
