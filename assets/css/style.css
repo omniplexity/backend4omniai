@@ -275,6 +275,7 @@ body {
 
 .message.streaming {
     opacity: 0.7;
+    min-height: 40px; /* Reserve space to prevent layout shift */
 }
 
 .message code {
@@ -283,6 +284,61 @@ body {
     border-radius: 3px;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     font-size: 13px;
+}
+
+/* Message Receipts */
+.message-receipt {
+    margin-top: var(--spacing-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.receipt-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--bg-1);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.receipt-toggle {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+}
+
+.receipt-expanded {
+    padding: var(--spacing-sm);
+    background-color: var(--bg-0);
+    border-top: 1px solid var(--border);
+}
+
+.receipt-expanded button {
+    margin-right: var(--spacing-sm);
+    font-size: 12px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+/* Jump to Latest Pill */
+.jump-pill {
+    position: sticky;
+    bottom: var(--spacing-md);
+    align-self: center;
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 10;
 }
 
 #composer {

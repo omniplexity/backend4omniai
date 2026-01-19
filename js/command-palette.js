@@ -67,7 +67,7 @@ class CommandPalette {
     registerActions() {
         // Load MRU actions from localStorage
         this.mruActions = this.loadMRUActions();
-        
+
         this.actions = [
             {
                 id: 'new-chat',
@@ -91,6 +91,13 @@ class CommandPalette {
                 action: () => this.executeAction('open-settings')
             },
             {
+                id: 'search-messages',
+                title: 'Search messages in thread',
+                description: 'Search within current conversation',
+                icon: '🔍',
+                action: () => this.executeAction('search-messages')
+            },
+            {
                 id: 'copy-diagnostics',
                 title: 'Copy Diagnostics',
                 description: 'Copy last request ID for debugging',
@@ -108,6 +115,8 @@ class CommandPalette {
 
         // Add conversation switching actions
         this.updateConversationActions();
+        // Add model switching actions
+        this.updateModelActions();
     }
 
     updateConversationActions() {
@@ -127,6 +136,23 @@ class CommandPalette {
                 });
             });
         }
+    }
+
+    updateModelActions() {
+        // Remove existing model actions
+        this.actions = this.actions.filter(action => !action.id.startsWith('switch-model-to-'));
+
+        // Add recent models from localStorage
+        const recentModels = this.loadRecentModels();
+        recentModels.forEach(model => {
+            this.actions.push({
+                id: `switch-model-to-${model.providerId}-${model.modelId}`,
+                title: `Switch model to ${model.name}`,
+                description: `Switch to ${model.providerName} - ${model.name}`,
+                icon: '🤖',
+                action: () => this.executeAction('switch-model-to', model.providerId, model.modelId)
+            });
+        });
     }
 
     bindEvents() {
@@ -230,6 +256,7 @@ class CommandPalette {
         this.query = '';
         this.selectedIndex = 0;
         this.updateConversationActions();
+        this.updateModelActions();
         this.filteredActions = [...this.actions];
         this.overlay.classList.remove('hidden');
         this.input.value = '';
@@ -282,12 +309,12 @@ class CommandPalette {
     filterActions() {
         if (!this.query) {
             // Show MRU actions first, then regular actions
-            const mruActions = this.mruActions.map(mru => 
+            const mruActions = this.mruActions.map(mru =>
                 this.actions.find(a => a.id === mru.id) || mru
             ).filter(Boolean);
-            
+
             const otherActions = this.actions.filter(a => !this.mruActions.some(mru => mru.id === a.id));
-            
+
             this.filteredActions = [...mruActions, ...otherActions];
             return;
         }
@@ -340,7 +367,7 @@ class CommandPalette {
         if (action) {
             // Add to MRU list
             this.addToMRU(action);
-            
+
             action.action();
             this.close();
         }
@@ -349,7 +376,7 @@ class CommandPalette {
     addToMRU(action) {
         // Remove if already exists
         this.mruActions = this.mruActions.filter(a => a.id !== action.id);
-        
+
         // Add to beginning
         this.mruActions.unshift({
             id: action.id,
@@ -357,10 +384,10 @@ class CommandPalette {
             description: action.description,
             icon: action.icon
         });
-        
+
         // Keep only last 10
         this.mruActions = this.mruActions.slice(0, 10);
-        
+
         // Save to localStorage
         localStorage.setItem('commandPaletteMRU', JSON.stringify(this.mruActions));
     }
@@ -372,6 +399,26 @@ class CommandPalette {
         } catch {
             return [];
         }
+    }
+
+    loadRecentModels() {
+        try {
+            const stored = localStorage.getItem('recentModels');
+            return stored ? JSON.parse(stored) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    addRecentModel(providerId, modelId, modelName, providerName) {
+        const recentModels = this.loadRecentModels();
+        // Remove if already exists
+        const filtered = recentModels.filter(m => !(m.providerId === providerId && m.modelId === modelId));
+        // Add to beginning
+        filtered.unshift({ providerId, modelId, name: modelName, providerName });
+        // Keep only last 5
+        const updated = filtered.slice(0, 5);
+        localStorage.setItem('recentModels', JSON.stringify(updated));
     }
 
     executeAction(actionId, ...args) {
@@ -389,6 +436,9 @@ class CommandPalette {
                     window.openSettingsDrawer();
                 }
                 break;
+            case 'search-messages':
+                this.searchMessagesInThread();
+                break;
             case 'copy-diagnostics':
                 this.copyDiagnostics();
                 break;
@@ -402,7 +452,26 @@ class CommandPalette {
                     window.selectConversation(args[0]);
                 }
                 break;
+            case 'switch-model-to':
+                if (args[0] && args[1]) {
+                    this.switchToModel(args[0], args[1]);
+                }
+                break;
         }
+    }
+
+    switchToModel(providerId, modelId) {
+        // Set provider
+        const providerSelect = document.getElementById('provider-select');
+        providerSelect.value = providerId;
+        providerSelect.dispatchEvent(new Event('change'));
+
+        // Set model after models are loaded
+        setTimeout(() => {
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.value = modelId;
+            modelSelect.dispatchEvent(new Event('change'));
+        }, 100);
     }
 
     toggleFocusMode() {
@@ -419,6 +488,32 @@ class CommandPalette {
             sidebar.classList.add('hidden');
             main.style.marginLeft = '0';
             localStorage.setItem('focusMode', 'true');
+        }
+    }
+
+    searchMessagesInThread() {
+        const query = prompt('Search messages in thread:');
+        if (!query || !query.trim()) return;
+
+        const transcript = document.getElementById('transcript');
+        const messages = transcript.querySelectorAll('.message');
+        let found = false;
+
+        messages.forEach(message => {
+            const text = message.textContent.toLowerCase();
+            if (text.includes(query.toLowerCase())) {
+                message.classList.add('search-highlight');
+                if (!found) {
+                    message.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    found = true;
+                }
+            } else {
+                message.classList.remove('search-highlight');
+            }
+        });
+
+        if (!found) {
+            alert('No messages found matching: ' + query);
         }
     }
 
@@ -442,10 +537,14 @@ class CommandPalette {
     }
 }
 
-// Initialize command palette after DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    window.commandPalette = new CommandPalette();
-});
+function initCommandPalette() {
+  if (document.body?.dataset?.page !== "chat") return;
+  if (window.commandPalette) return;
+  window.commandPalette = new CommandPalette();
+}
 
-// Make it globally available
-window.commandPalette = commandPalette;
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initCommandPalette, { once: true });
+} else {
+  initCommandPalette();
+}

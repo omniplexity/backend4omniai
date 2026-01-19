@@ -719,6 +719,10 @@ body {
     padding: var(--spacing-4);
 }
 
+.run-receipt.collapsed {
+    padding: var(--spacing-3);
+}
+
 .run-receipt-details h5 {
     margin: 0 0 var(--spacing-3) 0;
     font-size: var(--font-size-sm);
@@ -801,6 +805,87 @@ body {
     overflow-x: auto;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.run-receipt-actions {
+    display: flex;
+    gap: var(--spacing-3);
+    margin-top: var(--spacing-4);
+    flex-wrap: wrap;
+}
+
+.run-receipt-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-1);
+    padding: var(--spacing-2) var(--spacing-4);
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-fast);
+}
+
+.run-receipt-btn:hover {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.run-receipt-btn.rerun-btn {
+    background-color: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.run-receipt-btn.rerun-btn:hover {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.run-receipt-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    font-size: var(--font-size-sm);
+    color: var(--muted);
+}
+
+.run-receipt-summary span {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-1);
+}
+
+.run-receipt-summary .model-icon::before {
+    content: ">";
+}
+
+.run-receipt-summary .time-icon::before {
+    content: "ñ";
+}
+
+.run-receipt-summary .token-icon::before {
+    content: ">™";
+}
+
+.run-receipt-summary .request-id-icon::before {
+    content: "<”";
+}
+
+.run-receipt-summary .request-id {
+    font-family: var(--font-mono);
+    color: var(--text-1);
+    font-size: var(--font-size-xs);
+}
+
+.run-receipt-toggle.collapsed::after {
+    content: "¼";
+    margin-left: var(--spacing-1);
+}
+
+.run-receipt-toggle.expanded::after {
+    content: "²";
+    margin-left: var(--spacing-1);
 }
 
 #composer {

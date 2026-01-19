@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-    <div id="app">
+    <div id="app" data-page="chat">
         <div id="login-view" class="view hidden">
             <h1>Login to OmniAI</h1>
             <form id="login-form">
@@ -270,17 +270,5 @@
     <script src="js/command-palette.js"></script>
     <script src="js/prompt-dock.js"></script>
     <script src="./js/app.js" defer></script>
-
-    <!-- Debug: Force show login view -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('DOM loaded, forcing login view');
-            setTimeout(() => {
-                document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
-                document.getElementById('login-view').classList.remove('hidden');
-                console.log('Login view should be visible now');
-            }, 100);
-        });
-    </script>
 </body>
 </html>

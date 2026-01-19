@@ -35,24 +35,17 @@ function renderConversations(conversations) {
         const title = document.createElement('span');
         title.className = 'conversation-title';
         title.textContent = conv.title || 'Untitled Chat';
-        title.addEventListener('click', () => selectConversation(conv.id));
 
         const actions = document.createElement('div');
         actions.className = 'conversation-actions';
 
         const renameBtn = document.createElement('button');
         renameBtn.textContent = 'Rename';
-        renameBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            renameConversation(conv.id, conv.title);
-        });
+        renameBtn.className = 'rename-conversation-btn';
 
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Delete';
-        deleteBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteConversation(conv.id);
-        });
+        deleteBtn.className = 'delete-conversation-btn';
 
         actions.appendChild(renameBtn);
         actions.appendChild(deleteBtn);
@@ -63,6 +56,24 @@ function renderConversations(conversations) {
     });
 }
 
+// Event delegation for conversation actions
+document.getElementById('conversations-list').addEventListener('click', (e) => {
+    const li = e.target.closest('li');
+    if (!li) return;
+
+    const convId = li.dataset.id;
+
+    if (e.target.classList.contains('conversation-title')) {
+        selectConversation(convId);
+    } else if (e.target.classList.contains('rename-conversation-btn')) {
+        e.stopPropagation();
+        renameConversation(convId, li.querySelector('.conversation-title').textContent);
+    } else if (e.target.classList.contains('delete-conversation-btn')) {
+        e.stopPropagation();
+        deleteConversation(convId);
+    }
+});
+
 function renderTranscript(messages) {
     const transcript = document.getElementById('transcript');
     transcript.innerHTML = '';
@@ -70,12 +81,31 @@ function renderTranscript(messages) {
     messages.forEach(msg => {
         const messageEl = document.createElement('div');
         messageEl.className = `message ${msg.role}`;
+        messageEl.dataset.messageId = msg.id;
 
         if (msg.role === 'assistant' && msg.content === '') {
             messageEl.classList.add('streaming');
             messageEl.textContent = '...';
         } else {
             messageEl.innerHTML = msg.content.replace(/\n/g, '<br>');
+        }
+
+        // Add receipt for assistant messages
+        if (msg.role === 'assistant' && msg.metadata) {
+            const receipt = document.createElement('div');
+            receipt.className = 'message-receipt collapsed';
+            receipt.innerHTML = `
+                <div class="receipt-line">
+                    <span class="receipt-text">Run details</span>
+                    <button class="receipt-toggle" aria-label="Toggle run details">¼</button>
+                </div>
+                <div class="receipt-expanded hidden">
+                    <button class="receipt-re-run">Re-run with same settings</button>
+                    <button class="receipt-copy-json">Copy Run JSON</button>
+                    ${msg.metadata.request_id ? `<button class="receipt-copy-id">Copy Request ID</button>` : ''}
+                </div>
+            `;
+            messageEl.appendChild(receipt);
         }
 
         transcript.appendChild(messageEl);
