@@ -11,9 +11,19 @@ function setCsrfToken(token) {
     localStorage.setItem('csrfToken', token);
 }
 
+// Debug logging (check if enabled in app.js)
+const DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
+function debugLog(type, data = {}) {
+    if (DEBUG) {
+        console.log(`[${new Date().toISOString()}] ${type}`, data);
+    }
+}
+
 async function apiRequest(endpoint, options = {}) {
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}${endpoint}`;
+
+    debugLog('API_REQUEST', { method: options.method || 'GET', url });
 
     const headers = {
         'Content-Type': 'application/json',
@@ -43,11 +53,20 @@ async function apiRequest(endpoint, options = {}) {
         }
 
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || `HTTP ${response.status}`);
+            let errorMsg = `HTTP ${response.status}`;
+            try {
+                const errorData = await response.json();
+                errorMsg = errorData.message || errorMsg;
+                debugLog('API_RESPONSE', { status: response.status, error: errorData });
+            } catch (e) {
+                debugLog('API_RESPONSE', { status: response.status, error: errorMsg });
+            }
+            throw new Error(errorMsg);
         }
 
-        return await response.json();
+        const result = await response.json();
+        debugLog('API_RESPONSE', { status: response.status, success: true });
+        return result;
     } catch (error) {
         console.error('API request failed:', error);
         throw error;

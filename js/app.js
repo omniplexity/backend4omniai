@@ -13,9 +13,29 @@ let state = {
     session: { user: null },
     threads: [],
     activeThreadId: null,
-    run: { model: null, temperature: null, top_p: null, max_tokens: null },
+    run: { model: null, temperature: null, top_p: null, max_tokens: null }, // null means use provider defaults
     stream: { status: "idle", elapsedMs: 0, usage: null, lastError: null }
 };
+
+// Debug logging (enabled via ?debug=1)
+const DEBUG = new URLSearchParams(window.location.search).has('debug');
+function debugLog(type, data = {}) {
+    if (DEBUG) {
+        console.log(`[${new Date().toISOString()}] ${type}`, data);
+    }
+}
+
+// Global logger for other modules
+window.__omniDebugLog = debugLog;
+
+// Get generation settings (only non-null values)
+function getGenerationSettings() {
+    const settings = {};
+    if (state.run.temperature !== null) settings.temperature = state.run.temperature;
+    if (state.run.top_p !== null) settings.top_p = state.run.top_p;
+    if (state.run.max_tokens !== null) settings.max_tokens = state.run.max_tokens;
+    return settings;
+}
 
 // Legacy variables (to be phased out)
 let currentConversationId = null;
@@ -86,7 +106,7 @@ function renderComposer() {
     const providerId = getSelectedProvider();
     const modelId = getSelectedModel();
     const sendBtn = document.getElementById('send-btn');
-    sendBtn.disabled = !providerId || !modelId || state.stream.status === 'streaming';
+    sendBtn.disabled = !providerId || !modelId || !currentConversationId || state.stream.status === 'streaming';
 
     // Show/hide cancel/retry buttons
     const cancelBtn = document.getElementById('cancel-btn');
@@ -245,12 +265,18 @@ function handleRouteChange() {
 
 // Authentication
 async function initializeAuth() {
-    const user = getCurrentUser();
-    updateUserDisplay(user);
+    try {
+        const user = await checkAuth();
+        updateUserDisplay(user);
 
-    if (user) {
-        setRoute('chat');
-    } else {
+        if (user) {
+            setRoute('chat');
+        } else {
+            setRoute('login');
+        }
+    } catch (error) {
+        console.warn('Auth check failed:', error);
+        updateUserDisplay(null);
         setRoute('login');
     }
 }
@@ -271,58 +297,6 @@ function updateUserDisplay(user) {
         document.getElementById('admin-link').classList.add('hidden');
     }
 }
-
-on('login-form', 'submit', async (e) => {
-    e.preventDefault();
-    const username = el('username')?.value;
-    const password = el('password')?.value;
-
-    try {
-        await handleLogin(username, password);
-        updateUserDisplay(getCurrentUser());
-        setRoute('chat');
-    } catch (error) {
-        const errorEl = el('login-error');
-        if (errorEl) {
-            errorEl.textContent = error.message;
-            errorEl.classList.remove('hidden');
-        }
-    }
-});
-
-on('register-form', 'submit', async (e) => {
-    e.preventDefault();
-    const inviteCode = el('invite-code')?.value;
-    const username = el('reg-username')?.value;
-    const password = el('reg-password')?.value;
-
-    try {
-        await handleRegister(inviteCode, username, password);
-        updateUserDisplay(getCurrentUser());
-        setRoute('chat');
-    } catch (error) {
-        const errorEl = el('register-error');
-        if (errorEl) {
-            errorEl.textContent = error.message;
-            errorEl.classList.remove('hidden');
-        }
-    }
-});
-
-on('show-register', 'click', (e) => {
-    e.preventDefault();
-    setRoute('register');
-});
-
-on('show-login', 'click', (e) => {
-    e.preventDefault();
-    setRoute('login');
-});
-
-on('logout-btn', 'click', async () => {
-    await handleLogout();
-    setRoute('login');
-});
 
 // Backend URL setting removed from UI
 
@@ -412,6 +386,7 @@ async function createNewConversation() {
         const conversation = await createConversation();
         setCurrentConversationId(conversation.id);
         currentConversationId = conversation.id;
+        state.activeThreadId = conversation.id;
         renderTranscript([]);
         updateStatusLine('Ready');
         // Refresh conversation list to show the new one
@@ -428,6 +403,7 @@ async function selectConversation(conversationId, showErrorOnFail = true) {
         const messages = await getConversationMessages(conversationId);
         currentConversationId = conversationId;
         setCurrentConversationId(conversationId);
+        state.activeThreadId = conversationId;
         renderTranscript(messages);
         updateStatusLine('Ready');
     } catch (error) {
@@ -632,7 +608,13 @@ on('export-data-btn', 'click', () => {
 });
 
 // Message sending
-on('send-btn', 'click', sendMessage);
+on('send-btn', 'click', () => {
+    debugLog('SEND_CLICK');
+    sendMessage().catch(error => {
+        debugLog('SEND_ERROR', { error: error.message });
+        console.error('Send error:', error);
+    });
+});
 on('message-input', 'keydown', (e) => {
     // Respect enterToSend setting
     if (e.key === 'Enter' && !e.shiftKey && getSetting('enterToSend')) {
@@ -790,7 +772,13 @@ on('sidebar-toggle', 'click', () => {
     sidebar.classList.toggle('open');
 });
 
-on('new-conversation-btn', 'click', createNewConversation);
+on('new-conversation-btn', 'click', () => {
+    debugLog('NEW_CHAT_CLICK');
+    createNewConversation().catch(error => {
+        debugLog('NEW_CHAT_ERROR', { error: error.message });
+        console.error('New chat error:', error);
+    });
+});
 
 on('search-conversations', 'input', (e) => {
     loadConversations(e.target.value);
@@ -874,8 +862,266 @@ window.addEventListener('unhandledrejection', (event) => {
     }
 });
 
+// Single-init guard for UI bindings
+function bindUI() {
+    if (window.__omniBound) return;
+    window.__omniBound = true;
+
+    // Authentication
+    on('login-form', 'submit', async (e) => {
+        e.preventDefault();
+        const username = el('username')?.value;
+        const password = el('password')?.value;
+
+        try {
+            await handleLogin(username, password);
+            updateUserDisplay(getCurrentUser());
+            setRoute('chat');
+        } catch (error) {
+            const errorEl = el('login-error');
+            if (errorEl) {
+                errorEl.textContent = error.message;
+                errorEl.classList.remove('hidden');
+            }
+        }
+    });
+
+    on('register-form', 'submit', async (e) => {
+        e.preventDefault();
+        const inviteCode = el('invite-code')?.value;
+        const username = el('reg-username')?.value;
+        const password = el('reg-password')?.value;
+
+        try {
+            await handleRegister(inviteCode, username, password);
+            updateUserDisplay(getCurrentUser());
+            setRoute('chat');
+        } catch (error) {
+            const errorEl = el('register-error');
+            if (errorEl) {
+                errorEl.textContent = error.message;
+                errorEl.classList.remove('hidden');
+            }
+        }
+    });
+
+    on('show-register', 'click', (e) => {
+        e.preventDefault();
+        setRoute('register');
+    });
+
+    on('show-login', 'click', (e) => {
+        e.preventDefault();
+        setRoute('login');
+    });
+
+    on('logout-btn', 'click', async () => {
+        await handleLogout();
+        setRoute('login');
+    });
+
+    // Provider/Model handling
+    on('provider-select', 'change', async (e) => {
+        const providerId = e.target.value;
+        setSelectedProvider(providerId);
+        // Clear model selection when provider changes
+        setSelectedModel('');
+        updateSendButtonState();
+
+        if (providerId) {
+            try {
+                const models = await getProviderModels(providerId);
+                renderModels(models);
+                updateSendButtonState();
+            } catch (error) {
+                showError('Failed to load models: ' + error.message);
+                renderModels([]);
+            }
+        } else {
+            renderModels([]);
+        }
+    });
+
+    on('model-select', 'change', (e) => {
+        setSelectedModel(e.target.value);
+        updateSendButtonState();
+    });
+
+    // Settings drawer open/close
+    on('settings-btn', 'click', () => {
+        const drawer = el('settingsDrawer');
+        if (drawer) {
+            drawer.classList.remove('hidden');
+            loadSettingsUI();
+        }
+    });
+
+    on('close-settings-btn', 'click', () => {
+        const drawer = el('settingsDrawer');
+        if (drawer) drawer.classList.add('hidden');
+    });
+
+    // Settings change handlers - Appearance
+    on('setting-theme', 'change', (e) => setSetting('theme', e.target.value));
+    on('setting-font-size', 'change', (e) => setSetting('fontSize', e.target.value));
+    on('setting-layout', 'change', (e) => setSetting('layout', e.target.value));
+
+    // Settings change handlers - Chat Behavior
+    on('setting-auto-scroll', 'change', (e) => setSetting('autoScroll', e.target.checked));
+    on('setting-enter-send', 'change', (e) => setSetting('enterToSend', e.target.checked));
+    on('setting-timestamps', 'change', (e) => setSetting('showTimestamps', e.target.checked));
+    on('setting-stream-response', 'change', (e) => setSetting('streamResponse', e.target.checked));
+
+    // Settings change handlers - Generation Settings
+    on('setting-temperature', 'input', (e) => {
+        const val = e.target.value.trim();
+        state.run.temperature = val === '' ? null : parseFloat(val);
+        renderTopbar();
+    });
+    on('setting-top-p', 'input', (e) => {
+        const val = e.target.value.trim();
+        state.run.top_p = val === '' ? null : parseFloat(val);
+        renderTopbar();
+    });
+    on('setting-max-tokens', 'input', (e) => {
+        const val = e.target.value.trim();
+        state.run.max_tokens = val === '' ? null : parseInt(val, 10);
+        renderTopbar();
+    });
+
+    // Settings change handlers - Provider Defaults
+    on('setting-remember-provider', 'change', (e) => setSetting('rememberProvider', e.target.checked));
+    on('setting-remember-model', 'change', (e) => setSetting('rememberModel', e.target.checked));
+
+    // Reset generation settings
+    on('reset-generation-settings-btn', 'click', () => {
+        state.run.temperature = null;
+        state.run.top_p = null;
+        state.run.max_tokens = null;
+        loadSettingsUI(); // Reload UI to reflect changes
+        renderTopbar();
+    });
+
+    // Data actions
+    on('clear-history-btn', 'click', async () => {
+        if (confirm('Are you sure you want to clear all conversation history? This cannot be undone.')) {
+            // TODO: Implement clear history via API
+            showError('Clear history not yet implemented');
+        }
+    });
+
+    on('export-data-btn', 'click', () => {
+        // Export settings and conversation data as JSON
+        const data = {
+            settings: getAllSettings(),
+            exportedAt: new Date().toISOString(),
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `omniai-settings-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+
+    // Message sending
+    on('send-btn', 'click', () => {
+        debugLog('SEND_CLICK');
+        sendMessage().catch(error => {
+            debugLog('SEND_ERROR', { error: error.message });
+            console.error('Send error:', error);
+        });
+    });
+    on('message-input', 'keydown', (e) => {
+        // Respect enterToSend setting
+        if (e.key === 'Enter' && !e.shiftKey && getSetting('enterToSend')) {
+            e.preventDefault();
+            sendMessage();
+        } else if (e.key === 'Escape') {
+            cancelStreaming();
+        }
+    });
+
+    on('cancel-btn', 'click', cancelStreaming);
+
+    on('retry-btn', 'click', async () => {
+        if (!currentConversationId) return;
+
+        try {
+            await retryLastMessage(currentConversationId);
+            // Refresh conversation to get updated messages
+            await selectConversation(currentConversationId);
+        } catch (error) {
+            showError('Failed to retry: ' + error.message);
+        }
+    });
+
+    // Other UI
+    on('sidebar-toggle', 'click', () => {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.toggle('open');
+    });
+
+    on('new-conversation-btn', 'click', () => {
+        debugLog('NEW_CHAT_CLICK');
+        createNewConversation().catch(error => {
+            debugLog('NEW_CHAT_ERROR', { error: error.message });
+            console.error('New chat error:', error);
+        });
+    });
+
+    on('search-conversations', 'input', (e) => {
+        loadConversations(e.target.value);
+    });
+
+    on('dismiss-error', 'click', hideError);
+
+    on('retry-stream', 'click', () => {
+        hideDisconnectBanner();
+        // Retry would need to be implemented based on last message
+    });
+
+    // Conversation actions
+    on('rename-chat-btn', 'click', () => {
+        if (currentConversationId) {
+            const activeThread = state.threads.find(t => t.id === currentConversationId);
+            renameConversation(currentConversationId, activeThread?.title);
+        }
+    });
+
+    on('delete-chat-btn', 'click', () => {
+        if (currentConversationId) {
+            deleteConversationUI(currentConversationId);
+        }
+    });
+
+    // Diagnostics
+    on('test-me', 'click', async () => {
+        try {
+            const result = await getMe();
+            const diagEl = el('diag-results');
+            if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
+        } catch (error) {
+            const diagEl = el('diag-results');
+            if (diagEl) diagEl.textContent = 'Error: ' + error.message;
+        }
+    });
+
+    on('test-providers', 'click', async () => {
+        try {
+            const result = await getProviders();
+            const diagEl = el('diag-results');
+            if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
+        } catch (error) {
+            const diagEl = el('diag-results');
+            if (diagEl) diagEl.textContent = 'Error: ' + error.message;
+        }
+    });
+}
+
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
+    bindUI();
     window.addEventListener('hashchange', handleRouteChange);
     await initializeAuth();
     handleRouteChange();

@@ -58,15 +58,16 @@
                 </div>
             </div>
 
-            <div id="sidebar" class="sidebar" role="navigation" aria-label="Conversations">
-                <div id="sidebar-header" class="sidebar-header">
-                    <button id="new-conversation-btn" aria-label="New conversation">New Chat</button>
-                    <input type="text" id="search-conversations" placeholder="Search conversations..." aria-label="Search conversations">
+            <div class="chat-layout">
+                <div id="sidebar" class="sidebar" role="navigation" aria-label="Conversations">
+                    <div id="sidebar-header" class="sidebar-header">
+                        <button id="new-conversation-btn" aria-label="New conversation">New Chat</button>
+                        <input type="text" id="search-conversations" placeholder="Search conversations..." aria-label="Search conversations">
+                    </div>
+                    <ul id="conversations-list" role="list" aria-label="Conversation threads"></ul>
                 </div>
-                <ul id="conversations-list" role="list" aria-label="Conversation threads"></ul>
-            </div>
 
-            <main id="main" class="main">
+                <main id="main" class="main">
                 <div id="chatHeader" class="chat-header">
                     <h1 id="chat-title">New Chat</h1>
                     <div id="chat-actions">
@@ -102,6 +103,7 @@
                     </div>
                 </div>
             </main>
+            </div>
 
             <div id="settingsDrawer" class="hidden" role="dialog" aria-labelledby="settings-title" aria-modal="true">
                 <div id="settings-header">

@@ -1,35 +1,44 @@
 /* OmniAI WebUI Styles - GPT-5 Level Redesign */
 
 :root {
-    /* GPT-like Dark Theme */
-    --bg: #0f0f0f;
-    --panel: #1a1a1a;
-    --panel2: #2a2a2a;
-    --border: #333333;
+    /* Premium GPT-5-like Dark Theme with Enhanced Depth */
+    --bg: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    --bg-solid: #0f0f0f;
+    --panel: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+    --panel-solid: #1a1a1a;
+    --panel2: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
+    --panel2-solid: #2a2a2a;
+    --border: #404040;
     --text: #ffffff;
-    --muted: #888888;
-    --muted2: #666666;
+    --muted: #b0b0b0;
+    --muted2: #808080;
     --accent: #007aff;
+    --accent-hover: #0056cc;
     --danger: #ff3b30;
-    --shadow: rgba(0, 0, 0, 0.3);
+    --success: #34c759;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+    --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 
     /* Layout */
-    --topbar-height: 48px;
-    --sidebar-width: 280px;
-    --chat-max-width: 900px;
-    --radius: 12px;
-    --radius-sm: 8px;
+    --topbar-height: 52px;
+    --sidebar-width: 300px;
+    --chat-max-width: 920px;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --radius-lg: 20px;
 
     /* Spacing Scale */
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
     --space-4: 16px;
-    --space-5: 20px;
-    --space-6: 24px;
+    --space-5: 24px;
+    --space-6: 32px;
 
     /* Transitions */
-    --transition: 180ms ease;
+    --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-fast: 150ms ease;
 }
 
 * {
@@ -65,7 +74,7 @@ body {
 /* Topbar */
 .topbar {
     height: var(--topbar-height);
-    background-color: var(--panel);
+    background: var(--panel);
     border-bottom: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
@@ -73,6 +82,8 @@ body {
     padding: 0 var(--space-4);
     position: relative;
     z-index: 100;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
 }
 
 .topbar .sidebar-toggle {
@@ -174,11 +185,12 @@ body {
 /* Sidebar */
 .sidebar {
     width: var(--sidebar-width);
-    background-color: var(--panel);
+    background: var(--panel);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     position: relative;
+    box-shadow: var(--shadow-inner);
 }
 
 .sidebar-header {
@@ -291,6 +303,24 @@ body {
 .conversation-actions button:hover {
     color: var(--text);
     background-color: var(--panel2);
+}
+
+/* Chat Layout */
+.chat-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar {
+    width: var(--sidebar-width);
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    box-shadow: var(--shadow-inner);
 }
 
 /* Main Chat Area */

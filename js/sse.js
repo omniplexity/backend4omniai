@@ -1,5 +1,13 @@
 // OmniAI WebUI SSE Streaming Parser
 
+// Debug logging (check if enabled)
+const DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
+function debugLog(type, data = {}) {
+    if (DEBUG) {
+        console.log(`[${new Date().toISOString()}] ${type}`, data);
+    }
+}
+
 class SSEParser {
     constructor(url, options = {}) {
         this.url = url;
@@ -81,6 +89,7 @@ class SSEParser {
                         }
                         try {
                             const event = JSON.parse(data);
+                            debugLog('SSE_EVENT', { type: event.type, data: event });
                             this.onEvent(event);
                         } catch (error) {
                             console.warn('Failed to parse SSE event:', data, error);
