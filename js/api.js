@@ -17,6 +17,7 @@ async function apiRequest(endpoint, options = {}) {
 
     const headers = {
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true', // Skip ngrok free tier interstitial
         ...options.headers,
     };
 
