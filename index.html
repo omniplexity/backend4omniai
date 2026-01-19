@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
-    <div id="app">
+    <div id="app" class="app-shell">
         <div id="login-view" class="view hidden">
             <h1>Login to OmniAI</h1>
             <form id="login-form">
@@ -33,10 +33,11 @@
         </div>
 
         <div id="chat-view" class="view hidden">
-            <div id="topbar">
+            <div id="topbar" class="topbar">
                 <div id="topbar-left">
+                    <button id="sidebar-toggle" aria-label="Toggle sidebar" class="sidebar-toggle">☰</button>
                     <div id="logo">OmniAI</div>
-                    <div id="model-picker">
+                    <div id="model-picker" class="model-picker">
                         <select id="provider-select" aria-label="Provider">
                             <option value="">Select Provider</option>
                         </select>
@@ -44,7 +45,7 @@
                             <option value="">Select Model</option>
                         </select>
                     </div>
-                    <div id="run-settings-summary">Temp: 0.7, Top-P: 1, Max: 1024</div>
+                    <div id="run-settings-summary" class="run-settings-summary">Temp: 0.7, Top-P: 1, Max: 1024</div>
                     <div id="connection-indicator" aria-label="Connection status">● Connected</div>
                 </div>
                 <div id="topbar-right">
@@ -57,35 +58,48 @@
                 </div>
             </div>
 
-            <div id="sidebar" role="navigation" aria-label="Conversations">
-                <div id="sidebar-header">
+            <div id="sidebar" class="sidebar" role="navigation" aria-label="Conversations">
+                <div id="sidebar-header" class="sidebar-header">
                     <button id="new-conversation-btn" aria-label="New conversation">New Chat</button>
                     <input type="text" id="search-conversations" placeholder="Search conversations..." aria-label="Search conversations">
                 </div>
                 <ul id="conversations-list" role="list" aria-label="Conversation threads"></ul>
             </div>
 
-            <main id="main">
-                <div id="chatHeader">
+            <main id="main" class="main">
+                <div id="chatHeader" class="chat-header">
                     <h1 id="chat-title">New Chat</h1>
                     <div id="chat-actions">
                         <button id="rename-chat-btn" aria-label="Rename conversation">Rename</button>
                         <button id="delete-chat-btn" aria-label="Delete conversation">Delete</button>
                     </div>
                 </div>
-                <div id="transcript" role="log" aria-live="polite" aria-label="Chat transcript"></div>
-                <div id="composer">
+                <div id="welcome-panel" class="welcome-panel hidden">
+                    <div class="welcome-content">
+                        <h2>What can I help with?</h2>
+                        <div class="suggestion-chips">
+                            <button class="suggestion-chip">Explain quantum computing</button>
+                            <button class="suggestion-chip">Write a Python function</button>
+                            <button class="suggestion-chip">Debug my code</button>
+                            <button class="suggestion-chip">Plan a project</button>
+                            <button class="suggestion-chip">Analyze data trends</button>
+                            <button class="suggestion-chip">Design an API</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="transcript" class="transcript-wrap" role="log" aria-live="polite" aria-label="Chat transcript"></div>
+                <div id="composer" class="composer-wrap">
                     <div id="input-area">
                         <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
                         <button id="send-btn" disabled aria-label="Send message">Send</button>
                         <button id="cancel-btn" class="hidden" aria-label="Cancel streaming">Cancel</button>
                         <button id="retry-btn" class="hidden" aria-label="Retry last message">Retry</button>
                     </div>
-                </div>
-                <div id="status-line">
-                    <span id="status-text">Ready</span>
-                    <span id="elapsed-time"></span>
-                    <span id="token-usage"></span>
+                    <div id="status-line">
+                        <span id="status-text">Ready</span>
+                        <span id="elapsed-time"></span>
+                        <span id="token-usage"></span>
+                    </div>
                 </div>
             </main>
 

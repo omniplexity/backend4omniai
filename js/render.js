@@ -90,6 +90,25 @@ function renderTranscript(messages) {
             messageEl.innerHTML = msg.content.replace(/\n/g, '<br>');
         }
 
+        // Add copy buttons to code blocks
+        const codeBlocks = messageEl.querySelectorAll('pre code');
+        codeBlocks.forEach(codeBlock => {
+            const pre = codeBlock.parentElement;
+            if (!pre.querySelector('.code-copy-btn')) {
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'code-copy-btn';
+                copyBtn.textContent = 'Copy';
+                copyBtn.setAttribute('aria-label', 'Copy code');
+                copyBtn.addEventListener('click', () => {
+                    navigator.clipboard.writeText(codeBlock.textContent).then(() => {
+                        copyBtn.textContent = 'Copied!';
+                        setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+                    });
+                });
+                pre.appendChild(copyBtn);
+            }
+        });
+
         // Add receipt for assistant messages
         if (msg.role === 'assistant' && msg.metadata) {
             const receipt = document.createElement('div');
@@ -97,7 +116,7 @@ function renderTranscript(messages) {
             receipt.innerHTML = `
                 <div class="receipt-line">
                     <span class="receipt-text">Run details</span>
-                    <button class="receipt-toggle" aria-label="Toggle run details">�</button>
+                    <button class="receipt-toggle" aria-label="Toggle run details">▼</button>
                 </div>
                 <div class="receipt-expanded hidden">
                     <button class="receipt-re-run">Re-run with same settings</button>

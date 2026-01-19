@@ -65,15 +65,18 @@ function renderChatHeader() {
 }
 
 function renderTranscript(messages) {
-    const transcript = document.getElementById('transcript');
-    transcript.innerHTML = '';
+    // Use the renderTranscript from render.js
+    window.renderTranscript(messages);
 
-    messages.forEach(message => {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${message.role}`;
-        messageDiv.innerHTML = message.content.replace(/\n/g, '<br>');
-        transcript.appendChild(messageDiv);
-    });
+    // Show/hide welcome panel based on messages
+    const welcomePanel = document.getElementById('welcome-panel');
+    if (welcomePanel) {
+        if (messages.length === 0) {
+            welcomePanel.classList.remove('hidden');
+        } else {
+            welcomePanel.classList.add('hidden');
+        }
+    }
 
     scrollToBottomIfNeeded();
 }
@@ -161,9 +164,11 @@ function showJumpToLatest() {
         pill.className = 'jump-pill';
         pill.onclick = () => {
             document.getElementById('transcript').scrollTop = document.getElementById('transcript').scrollHeight;
-            pill.remove();
+            pill.classList.remove('visible');
         };
-        document.getElementById('transcript').appendChild(pill);
+        document.body.appendChild(pill);
+    } else {
+        pill.classList.add('visible');
     }
 }
 
@@ -780,10 +785,30 @@ on('retry-btn', 'click', async () => {
 });
 
 // Other UI
+on('sidebar-toggle', 'click', () => {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('open');
+});
+
 on('new-conversation-btn', 'click', createNewConversation);
 
 on('search-conversations', 'input', (e) => {
     loadConversations(e.target.value);
+});
+
+// Welcome panel suggestion chips
+document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('suggestion-chip')) {
+        const message = e.target.textContent;
+        const input = document.getElementById('message-input');
+        if (input) {
+            input.value = message;
+            input.focus();
+            // Hide welcome panel
+            const welcomePanel = document.getElementById('welcome-panel');
+            if (welcomePanel) welcomePanel.classList.add('hidden');
+        }
+    }
 });
 
 on('dismiss-error', 'click', hideError);
