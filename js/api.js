@@ -92,7 +92,12 @@ async function getProviders() {
 }
 
 async function getProviderModels(providerId) {
-    return await apiRequest(`/providers/${providerId}/models`);
+    const response = await apiRequest(`/providers/${providerId}/models`);
+    // Backend returns {models: [...]} - unwrap and normalize field names
+    return (response.models || []).map(m => ({
+        id: m.id,
+        name: m.label || m.id  // Use label as name, fallback to id
+    }));
 }
 
 async function getProviderHealth(providerId) {

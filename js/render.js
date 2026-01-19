@@ -108,15 +108,23 @@ function renderProviders(providers) {
 
     providers.forEach(provider => {
         const option = document.createElement('option');
-        option.value = provider.id;
+        option.value = provider.provider_id;
         option.textContent = provider.name;
         select.appendChild(option);
     });
 
-    // Restore selected provider
+    // Restore selected provider and trigger change to load models
     const selected = getSelectedProvider();
     if (selected) {
-        select.value = selected;
+        const optionExists = select.querySelector(`option[value="${selected}"]`);
+        if (optionExists) {
+            select.value = selected;
+            // Dispatch change event to trigger model loading
+            select.dispatchEvent(new Event('change'));
+        } else {
+            // Clear stale provider from storage
+            setSelectedProvider('');
+        }
     }
 }
 
