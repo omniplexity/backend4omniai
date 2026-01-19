@@ -67,22 +67,253 @@ function renderTranscript(messages) {
     const transcript = document.getElementById('transcript');
     transcript.innerHTML = '';
 
-    messages.forEach(msg => {
-        const messageEl = document.createElement('div');
-        messageEl.className = `message ${msg.role}`;
-
-        if (msg.role === 'assistant' && msg.content === '') {
-            messageEl.classList.add('streaming');
-            messageEl.textContent = '...';
-        } else {
-            messageEl.innerHTML = msg.content.replace(/\n/g, '<br>');
-        }
-
-        transcript.appendChild(messageEl);
+    messages.forEach((msg, index) => {
+        const messageCard = createMessageCard(msg, index);
+        transcript.appendChild(messageCard);
     });
 
     // Scroll to bottom
     transcript.scrollTop = transcript.scrollHeight;
+}
+
+function createMessageCard(msg, index) {
+    const card = document.createElement('div');
+    card.className = `message-card ${msg.role}`;
+    card.dataset.messageIndex = index;
+
+    // Header/meta section
+    const header = document.createElement('div');
+    header.className = 'message-header';
+
+    const meta = document.createElement('div');
+    meta.className = 'message-meta';
+    if (msg.role === 'assistant') {
+        // Add model and timing info if available
+        const modelInfo = document.createElement('span');
+        modelInfo.className = 'message-model';
+        modelInfo.textContent = msg.model || 'Assistant';
+        meta.appendChild(modelInfo);
+
+        if (msg.elapsed_time) {
+            const timing = document.createElement('span');
+            timing.className = 'message-timing';
+            timing.textContent = `${msg.elapsed_time}s`;
+            meta.appendChild(timing);
+        }
+
+        if (msg.usage) {
+            const tokens = document.createElement('span');
+            tokens.className = 'message-tokens';
+            tokens.textContent = `${msg.usage.total_tokens || 'N/A'} tokens`;
+            meta.appendChild(tokens);
+        }
+    }
+    header.appendChild(meta);
+
+    // Content section
+    const content = document.createElement('div');
+    content.className = 'message-content';
+
+    if (msg.role === 'assistant' && msg.content === '') {
+        card.classList.add('streaming');
+        content.innerHTML = '<div class="skeleton-placeholder">...</div>';
+    } else {
+        content.innerHTML = renderMessageContent(msg.content);
+    }
+
+    // Actions section (hover)
+    const actions = document.createElement('div');
+    actions.className = 'message-actions';
+
+    if (msg.role === 'assistant') {
+        // Copy button
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'action-btn copy-btn';
+        copyBtn.textContent = '=Ë';
+        copyBtn.title = 'Copy message';
+        copyBtn.addEventListener('click', () => copyMessageToClipboard(msg.content));
+
+        // Retry button
+        const retryBtn = document.createElement('button');
+        retryBtn.className = 'action-btn retry-btn';
+        retryBtn.textContent = '»';
+        retryBtn.title = 'Retry this message';
+        retryBtn.addEventListener('click', () => retryMessage(index));
+
+        // Continue button
+        const continueBtn = document.createElement('button');
+        continueBtn.className = 'action-btn continue-btn';
+        continueBtn.textContent = '¤';
+        continueBtn.title = 'Continue this message';
+        continueBtn.addEventListener('click', () => continueMessage(msg.content));
+
+        // Quote button
+        const quoteBtn = document.createElement('button');
+        quoteBtn.className = 'action-btn quote-btn';
+        quoteBtn.textContent = ']';
+        quoteBtn.title = 'Quote to composer';
+        quoteBtn.addEventListener('click', () => quoteToComposer(msg.content));
+
+        actions.appendChild(copyBtn);
+        actions.appendChild(retryBtn);
+        actions.appendChild(continueBtn);
+        actions.appendChild(quoteBtn);
+    } else {
+        // For user messages, just copy
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'action-btn copy-btn';
+        copyBtn.textContent = '=Ë';
+        copyBtn.title = 'Copy message';
+        copyBtn.addEventListener('click', () => copyMessageToClipboard(msg.content));
+
+        actions.appendChild(copyBtn);
+    }
+
+    card.appendChild(header);
+    card.appendChild(content);
+    card.appendChild(actions);
+
+    return card;
+}
+
+function renderMessageContent(content) {
+    if (!content) return '';
+
+    // Process code blocks
+    return content
+        .replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
+            const codeBlock = document.createElement('div');
+            codeBlock.className = 'code-block';
+
+            const header = document.createElement('div');
+            header.className = 'code-header';
+
+            const langLabel = document.createElement('span');
+            langLabel.className = 'code-lang';
+            langLabel.textContent = lang || 'text';
+
+            const actions = document.createElement('div');
+            actions.className = 'code-actions';
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'code-copy-btn';
+            copyBtn.textContent = 'Copy';
+            copyBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(code.trim());
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => copyBtn.textContent = 'Copy', 2000);
+            });
+
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'code-save-btn';
+            saveBtn.textContent = 'Save';
+            saveBtn.addEventListener('click', () => saveCodeAsFile(code.trim(), lang || 'txt'));
+
+            actions.appendChild(copyBtn);
+            actions.appendChild(saveBtn);
+
+            header.appendChild(langLabel);
+            header.appendChild(actions);
+
+            const pre = document.createElement('pre');
+            const codeEl = document.createElement('code');
+            if (lang) codeEl.className = `language-${lang}`;
+            codeEl.textContent = code.trim();
+
+            pre.appendChild(codeEl);
+            codeBlock.appendChild(header);
+            codeBlock.appendChild(pre);
+
+            return codeBlock.outerHTML;
+        })
+        .replace(/\n/g, '<br>');
+}
+
+function copyMessageToClipboard(content) {
+    navigator.clipboard.writeText(content).catch(err => {
+        console.error('Failed to copy:', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = content;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+    });
+}
+
+function retryMessage(messageIndex) {
+    // This will be connected to the app logic
+    if (window.retryMessageAtIndex) {
+        window.retryMessageAtIndex(messageIndex);
+    }
+}
+
+function continueMessage(content) {
+    // Insert content into composer for continuation
+    const input = document.getElementById('message-input');
+    input.value = content + '\n\n';
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function quoteToComposer(content) {
+    // Insert quoted content into composer
+    const input = document.getElementById('message-input');
+    const quote = '> ' + content.replace(/\n/g, '\n> ') + '\n\n';
+    input.value += quote;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+}
+
+function saveCodeAsFile(code, lang) {
+    const extension = getFileExtension(lang);
+    const filename = `code.${extension}`;
+    const blob = new Blob([code], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function getFileExtension(lang) {
+    const extensions = {
+        javascript: 'js',
+        python: 'py',
+        java: 'java',
+        cpp: 'cpp',
+        c: 'c',
+        html: 'html',
+        css: 'css',
+        json: 'json',
+        xml: 'xml',
+        yaml: 'yaml',
+        yml: 'yml',
+        markdown: 'md',
+        sql: 'sql',
+        bash: 'sh',
+        shell: 'sh',
+        typescript: 'ts',
+        go: 'go',
+        rust: 'rs',
+        php: 'php',
+        ruby: 'rb',
+        swift: 'swift',
+        kotlin: 'kt',
+        dart: 'dart',
+        scala: 'scala',
+        perl: 'pl',
+        lua: 'lua',
+        r: 'r',
+        matlab: 'm',
+        julia: 'jl'
+    };
+    return extensions[lang] || 'txt';
 }
 
 function appendToLastMessage(content) {

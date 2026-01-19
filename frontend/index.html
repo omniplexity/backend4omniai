@@ -47,6 +47,7 @@
                     <div id="connection-indicator" aria-label="Connection status">● Connected</div>
                 </div>
                 <div id="topbar-right">
+                    <button id="focus-mode-btn" aria-label="Toggle focus mode">🎯</button>
                     <div id="backend-url-setting">
                         <label for="api-base-url">Backend URL:</label>
                         <input type="text" id="api-base-url" placeholder="https://your-backend-url">
@@ -121,6 +122,18 @@
                         </select>
                         <button id="save-preset-btn">Save as Preset</button>
                         <button id="delete-preset-btn">Delete Preset</button>
+                    </div>
+                    <div id="prompt-dock">
+                        <h3>Prompt Templates</h3>
+                        <div id="prompt-templates" class="prompt-chips"></div>
+                        <h3>Saved Prompts</h3>
+                        <div id="saved-prompts">
+                            <div class="saved-prompt-controls">
+                                <input type="text" id="new-prompt-name" placeholder="Prompt name" maxlength="50">
+                                <button id="save-prompt-btn">Save Current</button>
+                            </div>
+                            <div id="saved-prompts-list" class="saved-prompts-list"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -254,6 +267,8 @@
     <script src="js/store.js"></script>
     <script src="js/render.js"></script>
     <script src="js/admin.js"></script>
+    <script src="js/command-palette.js"></script>
+    <script src="js/prompt-dock.js"></script>
     <script src="./js/app.js" defer></script>
 
     <!-- Debug: Force show login view -->
