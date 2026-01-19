@@ -1,11 +1,9 @@
 // OmniAI WebUI SSE Streaming Parser
 
 // Debug logging (check if enabled)
-var DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
 function debugLog(type, data = {}) {
-    if (DEBUG) {
-        console.log(`[${new Date().toISOString()}] ${type}`, data);
-    }
+    if (!window.__OMNI_DEBUG__) return;
+    console.log(`[${new Date().toISOString()}] ${type}`, data);
 }
 
 class SSEParser {

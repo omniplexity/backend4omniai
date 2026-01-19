@@ -18,11 +18,9 @@ let state = {
 };
 
 // Debug logging (enabled via ?debug=1)
-var DEBUG = new URLSearchParams(window.location.search).has('debug');
 function debugLog(type, data = {}) {
-    if (DEBUG) {
-        console.log(`[${new Date().toISOString()}] ${type}`, data);
-    }
+    if (!window.__OMNI_DEBUG__) return;
+    console.log(`[${new Date().toISOString()}] ${type}`, data);
 }
 
 // Global logger for other modules
@@ -86,7 +84,12 @@ function renderChatHeader() {
 
 function renderTranscript(messages) {
     // Use the renderTranscript from render.js
-    window.renderTranscript(messages);
+    if (window.Render?.renderTranscript) {
+        window.Render.renderTranscript(messages);
+    } else {
+        console.error('renderTranscript not available');
+        return;
+    }
 
     // Show/hide welcome panel based on messages
     const welcomePanel = document.getElementById('welcome-panel');

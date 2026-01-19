@@ -17,12 +17,15 @@
     </div>
     <script>
     (function(){
+      window.__OMNI_DEBUG__ = new URLSearchParams(location.search).has('debug');
       const show = (msg) => {
         const o = document.getElementById('fatal-overlay');
         const t = document.getElementById('fatal-text');
         if (!o || !t) return;
         t.textContent = msg;
-        o.style.display = 'block';
+        o.style.setProperty('display', 'block', 'important');
+        document.documentElement.style.background = '#0b0b0b';
+        document.body.style.background = '#0b0b0b';
       };
       window.__SHOW_FATAL__ = show;
       window.addEventListener('error', (e) => {

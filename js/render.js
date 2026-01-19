@@ -257,5 +257,6 @@ function clearMessageInput() {
     document.getElementById('message-input').value = '';
 }
 
-// Export to window for app.js
-window.renderTranscript = renderTranscript;
+// Export to window namespace for app.js
+window.Render = window.Render || {};
+window.Render.renderTranscript = renderTranscript;
