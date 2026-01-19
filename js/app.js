@@ -96,14 +96,7 @@ function renderComposer() {
     }
 }
 
-function renderSettingsDrawer() {
-    // Sync drawer inputs with state
-    document.getElementById('drawer-temperature').value = state.run.temperature;
-    document.getElementById('drawer-top-p').value = state.run.top_p;
-    document.getElementById('drawer-max-tokens').value = state.run.max_tokens;
-
-    // TODO: Load presets from localStorage
-}
+// Settings drawer rendering is now handled by loadSettingsUI()
 
 function renderToasts() {
     const toastHost = document.getElementById('toastHost');
@@ -269,48 +262,54 @@ function updateUserDisplay(user) {
     }
 }
 
-document.getElementById('login-form').addEventListener('submit', async (e) => {
+on('login-form', 'submit', async (e) => {
     e.preventDefault();
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
+    const username = el('username')?.value;
+    const password = el('password')?.value;
 
     try {
         await handleLogin(username, password);
         updateUserDisplay(getCurrentUser());
         setRoute('chat');
     } catch (error) {
-        document.getElementById('login-error').textContent = error.message;
-        document.getElementById('login-error').classList.remove('hidden');
+        const errorEl = el('login-error');
+        if (errorEl) {
+            errorEl.textContent = error.message;
+            errorEl.classList.remove('hidden');
+        }
     }
 });
 
-document.getElementById('register-form').addEventListener('submit', async (e) => {
+on('register-form', 'submit', async (e) => {
     e.preventDefault();
-    const inviteCode = document.getElementById('invite-code').value;
-    const username = document.getElementById('reg-username').value;
-    const password = document.getElementById('reg-password').value;
+    const inviteCode = el('invite-code')?.value;
+    const username = el('reg-username')?.value;
+    const password = el('reg-password')?.value;
 
     try {
         await handleRegister(inviteCode, username, password);
         updateUserDisplay(getCurrentUser());
         setRoute('chat');
     } catch (error) {
-        document.getElementById('register-error').textContent = error.message;
-        document.getElementById('register-error').classList.remove('hidden');
+        const errorEl = el('register-error');
+        if (errorEl) {
+            errorEl.textContent = error.message;
+            errorEl.classList.remove('hidden');
+        }
     }
 });
 
-document.getElementById('show-register').addEventListener('click', (e) => {
+on('show-register', 'click', (e) => {
     e.preventDefault();
     setRoute('register');
 });
 
-document.getElementById('show-login').addEventListener('click', (e) => {
+on('show-login', 'click', (e) => {
     e.preventDefault();
     setRoute('login');
 });
 
-document.getElementById('logout-btn').addEventListener('click', async () => {
+on('logout-btn', 'click', async () => {
     await handleLogout();
     setRoute('login');
 });
@@ -456,7 +455,7 @@ async function deleteConversationUI(conversationId) {
 }
 
 // Provider/Model handling
-document.getElementById('provider-select').addEventListener('change', async (e) => {
+on('provider-select', 'change', async (e) => {
     const providerId = e.target.value;
     setSelectedProvider(providerId);
     // Clear model selection when provider changes
@@ -477,7 +476,7 @@ document.getElementById('provider-select').addEventListener('change', async (e) 
     }
 });
 
-document.getElementById('model-select').addEventListener('change', (e) => {
+on('model-select', 'change', (e) => {
     setSelectedModel(e.target.value);
     updateSendButtonState();
 });
@@ -485,8 +484,8 @@ document.getElementById('model-select').addEventListener('change', (e) => {
 function updateSendButtonState() {
     const providerId = getSelectedProvider();
     const modelId = getSelectedModel();
-    const sendBtn = document.getElementById('send-btn');
-    sendBtn.disabled = !providerId || !modelId;
+    const sendBtn = el('send-btn');
+    if (sendBtn) sendBtn.disabled = !providerId || !modelId;
 }
 
 // Settings drawer open/close
@@ -569,8 +568,8 @@ on('export-data-btn', 'click', () => {
 });
 
 // Message sending
-document.getElementById('send-btn').addEventListener('click', sendMessage);
-document.getElementById('message-input').addEventListener('keydown', (e) => {
+on('send-btn', 'click', sendMessage);
+on('message-input', 'keydown', (e) => {
     // Respect enterToSend setting
     if (e.key === 'Enter' && !e.shiftKey && getSetting('enterToSend')) {
         e.preventDefault();
@@ -707,9 +706,9 @@ function cancelStreaming() {
     }
 }
 
-document.getElementById('cancel-btn').addEventListener('click', cancelStreaming);
+on('cancel-btn', 'click', cancelStreaming);
 
-document.getElementById('retry-btn').addEventListener('click', async () => {
+on('retry-btn', 'click', async () => {
     if (!currentConversationId) return;
 
     try {
@@ -722,15 +721,15 @@ document.getElementById('retry-btn').addEventListener('click', async () => {
 });
 
 // Other UI
-document.getElementById('new-conversation-btn').addEventListener('click', createNewConversation);
+on('new-conversation-btn', 'click', createNewConversation);
 
-document.getElementById('search-conversations').addEventListener('input', (e) => {
+on('search-conversations', 'input', (e) => {
     loadConversations(e.target.value);
 });
 
-document.getElementById('dismiss-error').addEventListener('click', hideError);
+on('dismiss-error', 'click', hideError);
 
-document.getElementById('retry-stream').addEventListener('click', () => {
+on('retry-stream', 'click', () => {
     hideDisconnectBanner();
     // Retry would need to be implemented based on last message
 });
@@ -750,21 +749,25 @@ on('delete-chat-btn', 'click', () => {
 });
 
 // Diagnostics
-document.getElementById('test-me').addEventListener('click', async () => {
+on('test-me', 'click', async () => {
     try {
         const result = await getMe();
-        document.getElementById('diag-results').textContent = JSON.stringify(result, null, 2);
+        const diagEl = el('diag-results');
+        if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
     } catch (error) {
-        document.getElementById('diag-results').textContent = 'Error: ' + error.message;
+        const diagEl = el('diag-results');
+        if (diagEl) diagEl.textContent = 'Error: ' + error.message;
     }
 });
 
-document.getElementById('test-providers').addEventListener('click', async () => {
+on('test-providers', 'click', async () => {
     try {
         const result = await getProviders();
-        document.getElementById('diag-results').textContent = JSON.stringify(result, null, 2);
+        const diagEl = el('diag-results');
+        if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
     } catch (error) {
-        document.getElementById('diag-results').textContent = 'Error: ' + error.message;
+        const diagEl = el('diag-results');
+        if (diagEl) diagEl.textContent = 'Error: ' + error.message;
     }
 });
 
