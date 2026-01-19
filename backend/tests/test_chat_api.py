@@ -1,12 +1,6 @@
 import asyncio
 import json
 import pytest
-import tempfile
-from pathlib import Path
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from alembic.config import Config
-from alembic import command
 
 from backend.app.main import app
 from backend.app.config.settings import settings
@@ -46,49 +40,6 @@ class FakeProvider(Provider):
 
 
 @pytest.fixture
-def temp_db():
-    """Create a temporary database for testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        db_url = f"sqlite:///{db_path}"
-
-        # Configure Alembic for temp DB
-        alembic_cfg = Config(Path("backend/alembic.ini"))
-        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-        alembic_cfg.set_main_option("script_location", "backend/migrations")
-
-        # Run migrations
-        command.upgrade(alembic_cfg, "head")
-
-        yield db_url
-
-
-@pytest.fixture
-def client(temp_db, monkeypatch):
-    """Test client with temporary database and fake provider."""
-    # Override database URL
-    monkeypatch.setattr(settings, "database_url", temp_db)
-    from backend.app.db.engine import reset_engine_for_tests
-    from backend.app.db.session import reset_sessionmaker_for_tests
-    reset_engine_for_tests()
-    reset_sessionmaker_for_tests()
-    # Disable secure cookies for testing
-    monkeypatch.setattr(settings, "cookie_secure", False)
-    # Set invite_only to True for testing
-    monkeypatch.setattr(settings, "invite_only", True)
-    # Set bootstrap token
-    monkeypatch.setattr(settings, "admin_bootstrap_token", "test-bootstrap-token")
-
-    # Add fake provider to registry
-    from backend.app.providers.registry import registry
-    registry._providers["fake"] = FakeProvider()
-    registry._providers["lmstudio"] = FakeProvider()  # Override with fake for testing
-
-    with TestClient(app) as client:
-        yield client
-
-
-@pytest.fixture
 def authenticated_client(client):
     """Test client with authenticated admin user."""
     # Bootstrap admin
@@ -103,6 +54,12 @@ def authenticated_client(client):
 
     client.cookies.set(settings.session_cookie_name, session_cookie)
     client.csrf_token = csrf_token  # Store for use in tests
+
+    # Add fake provider to registry for chat tests
+    from backend.app.providers.registry import registry
+    registry._providers["fake"] = FakeProvider()
+    registry._providers["lmstudio"] = FakeProvider()  # Override with fake for testing
+
     return client
 
 
@@ -509,13 +466,12 @@ def test_csrf_required_for_state_changing_endpoints(authenticated_client):
     assert response.json()["code"] == "CSRF_INVALID"
 
 
-def test_quota_exceeded_blocks_message_creation(authenticated_client, temp_db):
+def test_quota_exceeded_blocks_message_creation(authenticated_client, db_session):
     """Test that quota exceeded blocks message creation."""
     from backend.app.db.models import UserQuota, UserUsageDaily
-    from backend.app.db.session import get_db_session
 
     # Set quota to 0 for the user
-    db = get_db_session()
+    db = db_session
     quota = db.query(UserQuota).filter(UserQuota.user_id == 1).first()
     if not quota:
         quota = UserQuota(user_id=1, messages_per_day=0, tokens_per_day=0)
@@ -542,7 +498,7 @@ def test_quota_exceeded_blocks_message_creation(authenticated_client, temp_db):
     assert response.json()["code"] == "QUOTA_EXCEEDED"
 
 
-def test_rate_limiting_on_auth_endpoints(client, temp_db):
+def test_rate_limiting_on_auth_endpoints(client):
     """Test that auth endpoints are rate limited."""
     # Set bootstrap token
     from backend.app.config.settings import settings
@@ -563,14 +519,13 @@ def test_rate_limiting_on_auth_endpoints(client, temp_db):
             break
 
 
-def test_admin_endpoints_require_admin_auth(authenticated_client, client, temp_db):
+def test_admin_endpoints_require_admin_auth(authenticated_client, client, db_session):
     """Test that admin endpoints require admin role."""
     # Create a regular user (not admin)
     from backend.app.db.models import User
-    from backend.app.db.session import get_db_session
     from backend.app.auth.password import hash_password
 
-    db = get_db_session()
+    db = db_session
     regular_user = User(
         username="regular",
         password_hash=hash_password("pass"),
@@ -603,10 +558,3 @@ def test_admin_endpoints_require_admin_auth(authenticated_client, client, temp_d
             response = client.request(method.upper(), endpoint)
         assert response.status_code == 403
         assert response.json()["code"] == "ADMIN_REQUIRED"
-
-
-def test_migrations_to_head_on_empty_db(temp_db):
-    """Test that migrations run to head on empty DB."""
-    # This test already passed when temp_db was created, as it runs migrations to head
-    # If we get here, the migrations succeeded
-    assert temp_db is not None

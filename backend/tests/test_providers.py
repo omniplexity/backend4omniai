@@ -1,57 +1,8 @@
 import pytest
-import tempfile
-from pathlib import Path
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from alembic.config import Config
-from alembic import command
 import httpx
 
 from backend.app.main import app
 from backend.app.config.settings import settings
-
-
-@pytest.fixture
-def temp_db():
-    """Create a temporary database for testing."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        db_url = f"sqlite:///{db_path}"
-
-        # Configure Alembic for temp DB
-        alembic_cfg = Config(Path("backend/alembic.ini"))
-        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-        alembic_cfg.set_main_option("script_location", "backend/migrations")
-
-        # Run migrations
-        command.upgrade(alembic_cfg, "head")
-
-        yield db_url
-
-
-@pytest.fixture
-def client(temp_db, monkeypatch):
-    """Test client with temporary database."""
-    # Override database URL
-    monkeypatch.setattr(settings, "database_url", temp_db)
-    from backend.app.db.engine import reset_engine_for_tests
-    from backend.app.db.session import reset_sessionmaker_for_tests
-    reset_engine_for_tests()
-    reset_sessionmaker_for_tests()
-    # Disable secure cookies for testing
-    monkeypatch.setattr(settings, "cookie_secure", False)
-    # Set invite_only to True for testing
-    monkeypatch.setattr(settings, "invite_only", True)
-    # Set bootstrap token
-    monkeypatch.setattr(settings, "admin_bootstrap_token", "test-bootstrap-token")
-
-    # Rebuild registry with new settings
-    from backend.app.providers.registry import registry
-    registry._providers.clear()
-    registry.build_registry()
-
-    with TestClient(app) as client:
-        yield client
 
 
 @pytest.fixture

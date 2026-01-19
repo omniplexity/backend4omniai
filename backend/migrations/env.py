@@ -62,7 +62,13 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine
+    # Use engine from config if url is set (for tests), otherwise use app engine
+    url = config.get_main_option("sqlalchemy.url")
+    if url:
+        from sqlalchemy import create_engine
+        connectable = create_engine(url, poolclass=pool.NullPool)
+    else:
+        connectable = engine
 
     with connectable.connect() as connection:
         context.configure(
@@ -71,6 +77,7 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+    connectable.dispose()
 
 
 if context.is_offline_mode():

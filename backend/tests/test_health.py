@@ -42,19 +42,26 @@ def test_db_migration():
     assert isinstance(data["db"]["latency_ms"], (int, float))
 
 
-def test_migrations_apply_to_temp_db():
+def test_migrations_apply_to_temp_db(engine, tmp_db_path, project_root):
     """Test that migrations apply successfully to a temporary SQLite database."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        db_url = f"sqlite:///{db_path}"
+    from sqlalchemy import inspect
+    from alembic.config import Config
+    from alembic import command
 
-        # Configure Alembic for temp DB
-        alembic_cfg = Config(Path("alembic.ini"))
-        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-        alembic_cfg.set_main_option("script_location", "migrations")
+    def apply_migrations_local(engine, db_url, project_root):
+        cfg = Config(str(project_root / "backend" / "alembic.ini"))
+        cfg.set_main_option("script_location", str(project_root / "backend" / "migrations"))
+        cfg.set_main_option("sqlalchemy.url", db_url)
+        command.upgrade(cfg, "head")
 
-        # Run migrations (should not raise)
-        command.upgrade(alembic_cfg, "head")
+    db_url = f"sqlite:///{tmp_db_path}"
+    apply_migrations_local(engine, db_url, project_root)
+
+    # Assert tables exist
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+    expected_tables = {"users", "conversations", "messages", "invites", "audit_log"}
+    assert expected_tables.issubset(set(tables))
 
 
 def test_health_deep_origin_lock(monkeypatch):
@@ -127,38 +134,23 @@ def test_health_deep_db_failure(monkeypatch):
         app.dependency_overrides.pop(get_db, None)
 
 
-def test_json_fields_accept_dict():
+def test_json_fields_accept_dict(db_session):
     """Test that JSON fields in messages accept dict payloads."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        db_url = f"sqlite:///{db_path}"
+    # Test append_message with dict payloads
+    provider_meta = {"model": "gpt-4", "temperature": 0.7}
+    token_usage = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
 
-        # Create engine and run migrations
-        engine = create_engine(db_url)
-        try:
-            Base.metadata.create_all(bind=engine)
+    message = append_message(
+        session=db_session,
+        conversation_id=1,  # Doesn't exist but that's ok for this test
+        role="user",
+        content="Hello",
+        provider_meta=provider_meta,
+        token_usage=token_usage,
+    )
 
-            from sqlalchemy.orm import sessionmaker
-            SessionLocal = sessionmaker(bind=engine)
+    # Verify the message was created with dict data
+    assert message.provider_meta == provider_meta
+    assert message.token_usage == token_usage
 
-            with SessionLocal() as session:
-                # Test append_message with dict payloads
-                provider_meta = {"model": "gpt-4", "temperature": 0.7}
-                token_usage = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
-
-                message = append_message(
-                    session=session,
-                    conversation_id=1,  # Doesn't exist but that's ok for this test
-                    role="user",
-                    content="Hello",
-                    provider_meta=provider_meta,
-                    token_usage=token_usage,
-                )
-
-                # Verify the message was created with dict data
-                assert message.provider_meta == provider_meta
-                assert message.token_usage == token_usage
-
-                session.commit()
-        finally:
-            engine.dispose()
+    db_session.commit()
