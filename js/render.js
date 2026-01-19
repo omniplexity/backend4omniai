@@ -207,20 +207,6 @@ function updateUserDisplay(user) {
     display.textContent = user ? user.username || user.email || 'User' : '';
 }
 
-function updateSettingsInputs() {
-    // Use correct drawer element IDs with defensive access
-    const tempEl = document.getElementById('drawer-temperature');
-    const topPEl = document.getElementById('drawer-top-p');
-    const maxTokensEl = document.getElementById('drawer-max-tokens');
-
-    if (tempEl) tempEl.value = getTemperature();
-    if (topPEl) topPEl.value = getTopP();
-    if (maxTokensEl) {
-        const maxTokens = getMaxTokens();
-        maxTokensEl.value = maxTokens || '';
-    }
-}
-
 function enableSendButton() {
     document.getElementById('send-btn').disabled = false;
 }

@@ -100,28 +100,73 @@
                     <button id="close-settings-btn" aria-label="Close settings">×</button>
                 </div>
                 <div id="settings-content">
-                    <div id="run-settings">
-                        <h3>Run Settings</h3>
+                    <!-- Theme & Appearance -->
+                    <div class="settings-section">
+                        <h3>Appearance</h3>
                         <div class="setting-group">
-                            <label for="drawer-temperature">Temperature:</label>
-                            <input type="number" id="drawer-temperature" min="0" max="2" step="0.1">
+                            <label for="setting-theme">Theme:</label>
+                            <select id="setting-theme">
+                                <option value="dark">Dark</option>
+                                <option value="light">Light</option>
+                                <option value="system">System</option>
+                            </select>
                         </div>
                         <div class="setting-group">
-                            <label for="drawer-top-p">Top-P:</label>
-                            <input type="number" id="drawer-top-p" min="0" max="1" step="0.01">
+                            <label for="setting-font-size">Font Size:</label>
+                            <select id="setting-font-size">
+                                <option value="small">Small</option>
+                                <option value="medium">Medium</option>
+                                <option value="large">Large</option>
+                            </select>
                         </div>
                         <div class="setting-group">
-                            <label for="drawer-max-tokens">Max Tokens:</label>
-                            <input type="number" id="drawer-max-tokens" min="1">
+                            <label for="setting-layout">Layout:</label>
+                            <select id="setting-layout">
+                                <option value="comfortable">Comfortable</option>
+                                <option value="compact">Compact</option>
+                            </select>
                         </div>
                     </div>
-                    <div id="presets">
-                        <h3>Presets</h3>
-                        <select id="preset-select">
-                            <option value="">Select Preset</option>
-                        </select>
-                        <button id="save-preset-btn">Save as Preset</button>
-                        <button id="delete-preset-btn">Delete Preset</button>
+
+                    <!-- Chat Behavior -->
+                    <div class="settings-section">
+                        <h3>Chat Behavior</h3>
+                        <div class="setting-group checkbox">
+                            <input type="checkbox" id="setting-auto-scroll" checked>
+                            <label for="setting-auto-scroll">Auto-scroll to new messages</label>
+                        </div>
+                        <div class="setting-group checkbox">
+                            <input type="checkbox" id="setting-enter-send" checked>
+                            <label for="setting-enter-send">Enter to send (Shift+Enter for newline)</label>
+                        </div>
+                        <div class="setting-group checkbox">
+                            <input type="checkbox" id="setting-timestamps">
+                            <label for="setting-timestamps">Show message timestamps</label>
+                        </div>
+                        <div class="setting-group checkbox">
+                            <input type="checkbox" id="setting-stream-response" checked>
+                            <label for="setting-stream-response">Stream responses (show as they generate)</label>
+                        </div>
+                    </div>
+
+                    <!-- Provider Defaults -->
+                    <div class="settings-section">
+                        <h3>Provider Defaults</h3>
+                        <div class="setting-group checkbox">
+                            <input type="checkbox" id="setting-remember-provider" checked>
+                            <label for="setting-remember-provider">Remember last used provider</label>
+                        </div>
+                        <div class="setting-group checkbox">
+                            <input type="checkbox" id="setting-remember-model" checked>
+                            <label for="setting-remember-model">Remember last used model</label>
+                        </div>
+                    </div>
+
+                    <!-- Data -->
+                    <div class="settings-section">
+                        <h3>Data</h3>
+                        <button id="clear-history-btn" class="danger-btn">Clear Conversation History</button>
+                        <button id="export-data-btn">Export Data</button>
                     </div>
                 </div>
             </div>

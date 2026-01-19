@@ -332,7 +332,6 @@ async function initializeChat() {
     try {
         await loadProviders();
         await loadConversations();
-        updateSettingsInputs();
         updateSendButtonState();
 
         // Always ensure we have an active conversation
@@ -490,24 +489,13 @@ function updateSendButtonState() {
     sendBtn.disabled = !providerId || !modelId;
 }
 
-// Settings - use correct drawer element IDs with defensive helpers
-on('drawer-temperature', 'input', (e) => {
-    setTemperature(parseFloat(e.target.value));
-});
-
-on('drawer-top-p', 'input', (e) => {
-    setTopP(parseFloat(e.target.value));
-});
-
-on('drawer-max-tokens', 'input', (e) => {
-    const value = e.target.value ? parseInt(e.target.value, 10) : null;
-    setMaxTokens(value);
-});
-
 // Settings drawer open/close
 on('settings-btn', 'click', () => {
     const drawer = el('settingsDrawer');
-    if (drawer) drawer.classList.remove('hidden');
+    if (drawer) {
+        drawer.classList.remove('hidden');
+        loadSettingsUI();
+    }
 });
 
 on('close-settings-btn', 'click', () => {
@@ -515,10 +503,76 @@ on('close-settings-btn', 'click', () => {
     if (drawer) drawer.classList.add('hidden');
 });
 
+// Load current settings into UI
+function loadSettingsUI() {
+    // Appearance
+    const themeEl = el('setting-theme');
+    const fontSizeEl = el('setting-font-size');
+    const layoutEl = el('setting-layout');
+    if (themeEl) themeEl.value = getSetting('theme');
+    if (fontSizeEl) fontSizeEl.value = getSetting('fontSize');
+    if (layoutEl) layoutEl.value = getSetting('layout');
+
+    // Chat Behavior
+    const autoScrollEl = el('setting-auto-scroll');
+    const enterSendEl = el('setting-enter-send');
+    const timestampsEl = el('setting-timestamps');
+    const streamEl = el('setting-stream-response');
+    if (autoScrollEl) autoScrollEl.checked = getSetting('autoScroll');
+    if (enterSendEl) enterSendEl.checked = getSetting('enterToSend');
+    if (timestampsEl) timestampsEl.checked = getSetting('showTimestamps');
+    if (streamEl) streamEl.checked = getSetting('streamResponse');
+
+    // Provider Defaults
+    const rememberProviderEl = el('setting-remember-provider');
+    const rememberModelEl = el('setting-remember-model');
+    if (rememberProviderEl) rememberProviderEl.checked = getSetting('rememberProvider');
+    if (rememberModelEl) rememberModelEl.checked = getSetting('rememberModel');
+}
+
+// Settings change handlers - Appearance
+on('setting-theme', 'change', (e) => setSetting('theme', e.target.value));
+on('setting-font-size', 'change', (e) => setSetting('fontSize', e.target.value));
+on('setting-layout', 'change', (e) => setSetting('layout', e.target.value));
+
+// Settings change handlers - Chat Behavior
+on('setting-auto-scroll', 'change', (e) => setSetting('autoScroll', e.target.checked));
+on('setting-enter-send', 'change', (e) => setSetting('enterToSend', e.target.checked));
+on('setting-timestamps', 'change', (e) => setSetting('showTimestamps', e.target.checked));
+on('setting-stream-response', 'change', (e) => setSetting('streamResponse', e.target.checked));
+
+// Settings change handlers - Provider Defaults
+on('setting-remember-provider', 'change', (e) => setSetting('rememberProvider', e.target.checked));
+on('setting-remember-model', 'change', (e) => setSetting('rememberModel', e.target.checked));
+
+// Data actions
+on('clear-history-btn', 'click', async () => {
+    if (confirm('Are you sure you want to clear all conversation history? This cannot be undone.')) {
+        // TODO: Implement clear history via API
+        showError('Clear history not yet implemented');
+    }
+});
+
+on('export-data-btn', 'click', () => {
+    // Export settings and conversation data as JSON
+    const data = {
+        settings: getAllSettings(),
+        exportedAt: new Date().toISOString(),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `omniai-settings-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
 // Message sending
 document.getElementById('send-btn').addEventListener('click', sendMessage);
 document.getElementById('message-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Respect enterToSend setting
+    if (e.key === 'Enter' && !e.shiftKey && getSetting('enterToSend')) {
         e.preventDefault();
         sendMessage();
     } else if (e.key === 'Escape') {
@@ -576,16 +630,15 @@ async function startStreaming(providerId, modelId) {
         currentStreamingParser.stop();
     }
 
-    const settings = getGenerationSettings();
     streamingStartTime = Date.now();
     updateStatusLine('Streaming...');
 
     try {
+        // Model tuning is handled by LM Studio - we just specify provider/model
         currentStreamingParser = await streamChat(
             currentConversationId,
             providerId,
             modelId,
-            settings,
             handleStreamEvent,
             handleStreamError,
             handleStreamDisconnect
