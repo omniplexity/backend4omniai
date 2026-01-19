@@ -1,9 +1,182 @@
 // OmniAI WebUI Main Application Controller
 
-let currentConversationId = null;
+// Centralized State
+let state = {
+    session: { user: null },
+    threads: [],
+    activeThreadId: null,
+    run: { model: null, temperature: 0.7, top_p: 1, max_tokens: 1024 },
+    stream: { status: "idle", elapsedMs: 0, usage: null, lastError: null }
+};
+
+// Legacy variables (to be phased out)
 let currentStreamingParser = null;
 let streamingStartTime = null;
 let currentGenerationId = null;
+
+// Render Functions
+function renderTopbar() {
+    const user = state.session.user;
+    const userDisplay = document.getElementById('user-display');
+    if (user) {
+        userDisplay.textContent = user.username;
+        const adminLink = document.getElementById('admin-link');
+        if (user.role === 'admin') {
+            adminLink.classList.remove('hidden');
+        } else {
+            adminLink.classList.add('hidden');
+        }
+    } else {
+        userDisplay.textContent = '';
+        document.getElementById('admin-link').classList.add('hidden');
+    }
+
+    // Run settings summary
+    const summary = `Temp: ${state.run.temperature}, Top-P: ${state.run.top_p}, Max: ${state.run.max_tokens}`;
+    document.getElementById('run-settings-summary').textContent = summary;
+
+    // Connection indicator
+    const indicator = document.getElementById('connection-indicator');
+    indicator.textContent = 'Ï Connected'; // TODO: Update based on actual connection status
+}
+
+function renderSidebar() {
+    renderConversations(state.threads);
+}
+
+function renderChatHeader() {
+    const activeThread = state.threads.find(t => t.id === state.activeThreadId);
+    const title = activeThread?.title || 'New Chat';
+    document.getElementById('chat-title').textContent = title;
+}
+
+function renderTranscript(messages) {
+    const transcript = document.getElementById('transcript');
+    transcript.innerHTML = '';
+
+    messages.forEach(message => {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${message.role}`;
+        messageDiv.innerHTML = message.content.replace(/\n/g, '<br>');
+        transcript.appendChild(messageDiv);
+    });
+
+    scrollToBottomIfNeeded();
+}
+
+function renderComposer() {
+    // Update send button state
+    const providerId = getSelectedProvider();
+    const modelId = getSelectedModel();
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.disabled = !providerId || !modelId || state.stream.status === 'streaming';
+
+    // Show/hide cancel/retry buttons
+    const cancelBtn = document.getElementById('cancel-btn');
+    const retryBtn = document.getElementById('retry-btn');
+
+    if (state.stream.status === 'streaming') {
+        cancelBtn.classList.remove('hidden');
+        retryBtn.classList.add('hidden');
+    } else if (state.stream.status === 'error' || state.stream.status === 'cancelled') {
+        cancelBtn.classList.add('hidden');
+        retryBtn.classList.remove('hidden');
+    } else {
+        cancelBtn.classList.add('hidden');
+        retryBtn.classList.add('hidden');
+    }
+}
+
+function renderSettingsDrawer() {
+    // Sync drawer inputs with state
+    document.getElementById('drawer-temperature').value = state.run.temperature;
+    document.getElementById('drawer-top-p').value = state.run.top_p;
+    document.getElementById('drawer-max-tokens').value = state.run.max_tokens;
+
+    // TODO: Load presets from localStorage
+}
+
+function renderToasts() {
+    const toastHost = document.getElementById('toastHost');
+    toastHost.innerHTML = '';
+
+    if (state.stream.lastError) {
+        const toast = document.createElement('div');
+        toast.className = 'toast error';
+        toast.innerHTML = `
+            <div>Error: ${state.stream.lastError.message}</div>
+            <button onclick="this.parentElement.remove()">×</button>
+        `;
+        toastHost.appendChild(toast);
+    }
+}
+
+function updateStatusLine(text, elapsed = null, usage = null) {
+    const statusText = document.getElementById('status-text');
+    const elapsedTime = document.getElementById('elapsed-time');
+    const tokenUsage = document.getElementById('token-usage');
+
+    statusText.textContent = text;
+
+    if (elapsed !== null) {
+        elapsedTime.textContent = `${elapsed.toFixed(1)}s`;
+    } else {
+        elapsedTime.textContent = '';
+    }
+
+    if (usage) {
+        const total = usage.prompt_tokens + usage.completion_tokens;
+        tokenUsage.textContent = `${total} tokens`;
+    } else {
+        tokenUsage.textContent = '';
+    }
+}
+
+// Auto-scroll logic
+function scrollToBottomIfNeeded() {
+    const transcript = document.getElementById('transcript');
+    const isAtBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 100;
+
+    if (isAtBottom) {
+        transcript.scrollTop = transcript.scrollHeight;
+    } else {
+        // Show jump to latest pill if not at bottom and new content arrived
+        showJumpToLatest();
+    }
+}
+
+function showJumpToLatest() {
+    let pill = document.getElementById('jump-to-latest');
+    if (!pill) {
+        pill = document.createElement('button');
+        pill.id = 'jump-to-latest';
+        pill.textContent = 'Jump to latest';
+        pill.className = 'jump-pill';
+        pill.onclick = () => {
+            document.getElementById('transcript').scrollTop = document.getElementById('transcript').scrollHeight;
+            pill.remove();
+        };
+        document.getElementById('transcript').appendChild(pill);
+    }
+}
+
+// Incremental transcript updates
+function appendToLastMessage(content) {
+    const transcript = document.getElementById('transcript');
+    const lastMessage = transcript.lastElementChild;
+    if (lastMessage && lastMessage.classList.contains('assistant')) {
+        lastMessage.innerHTML += content.replace(/\n/g, '<br>');
+        scrollToBottomIfNeeded();
+    }
+}
+
+function finalizeLastMessage() {
+    const transcript = document.getElementById('transcript');
+    const lastMessage = transcript.lastElementChild;
+    if (lastMessage && lastMessage.classList.contains('assistant')) {
+        lastMessage.classList.remove('streaming');
+    }
+}
 
 // Routing
 function getRoute() {
@@ -148,10 +321,17 @@ async function initializeChat() {
         await loadProviders();
         await loadConversations();
         updateSettingsInputs();
+        updateSendButtonState();
 
         const savedConversationId = getCurrentConversationId();
         if (savedConversationId) {
-            await selectConversation(savedConversationId);
+            try {
+                await selectConversation(savedConversationId);
+            } catch (error) {
+                // Conversation doesn't exist, create new one
+                console.warn('Saved conversation not found, creating new one');
+                await createNewConversation();
+            }
         } else {
             await createNewConversation();
         }
@@ -242,11 +422,15 @@ async function deleteConversation(conversationId) {
 document.getElementById('provider-select').addEventListener('change', async (e) => {
     const providerId = e.target.value;
     setSelectedProvider(providerId);
+    // Clear model selection when provider changes
+    setSelectedModel('');
+    updateSendButtonState();
 
     if (providerId) {
         try {
             const models = await getProviderModels(providerId);
             renderModels(models);
+            updateSendButtonState();
         } catch (error) {
             showError('Failed to load models: ' + error.message);
             renderModels([]);
@@ -258,7 +442,15 @@ document.getElementById('provider-select').addEventListener('change', async (e) 
 
 document.getElementById('model-select').addEventListener('change', (e) => {
     setSelectedModel(e.target.value);
+    updateSendButtonState();
 });
+
+function updateSendButtonState() {
+    const providerId = getSelectedProvider();
+    const modelId = getSelectedModel();
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.disabled = !providerId || !modelId;
+}
 
 // Settings
 document.getElementById('temperature').addEventListener('input', (e) => {
@@ -304,12 +496,19 @@ async function sendMessage() {
         disableSendButton();
         clearMessageInput();
 
-        // Create user message
-        const userMessage = { role: 'user', content };
-        renderTranscript([...document.querySelectorAll('.message')].map(el => ({
-            role: el.classList.contains('user') ? 'user' : 'assistant',
-            content: el.innerHTML.replace(/<br>/g, '\n')
-        })).concat(userMessage));
+        // Add user message to transcript
+        const transcript = document.getElementById('transcript');
+        const userDiv = document.createElement('div');
+        userDiv.className = 'message user';
+        userDiv.innerHTML = content.replace(/\n/g, '<br>');
+        transcript.appendChild(userDiv);
+
+        // Add empty assistant message placeholder for streaming
+        const assistantDiv = document.createElement('div');
+        assistantDiv.className = 'message assistant streaming';
+        assistantDiv.textContent = '...';
+        transcript.appendChild(assistantDiv);
+        transcript.scrollTop = transcript.scrollHeight;
 
         // Start streaming
         await startStreaming(content, providerId, modelId);

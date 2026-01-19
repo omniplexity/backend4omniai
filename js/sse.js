@@ -109,6 +109,10 @@ async function streamChat(conversationId, providerId, modelId, settings = {}, on
 
     const parser = new SSEParser(url, {
         method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+        },
         body,
         onEvent,
         onError,

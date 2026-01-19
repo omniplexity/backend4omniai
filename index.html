@@ -32,56 +32,101 @@
         </div>
 
         <div id="chat-view" class="view hidden">
-            <header>
-                <div id="user-info">
-                    <span id="user-display"></span>
-                    <button id="logout-btn">Logout</button>
+            <div id="topbar">
+                <div id="topbar-left">
+                    <div id="logo">OmniAI</div>
+                    <div id="model-picker">
+                        <select id="provider-select" aria-label="Provider">
+                            <option value="">Select Provider</option>
+                        </select>
+                        <select id="model-select" aria-label="Model" disabled>
+                            <option value="">Select Model</option>
+                        </select>
+                    </div>
+                    <div id="run-settings-summary">Temp: 0.7, Top-P: 1, Max: 1024</div>
+                    <div id="connection-indicator" aria-label="Connection status">● Connected</div>
                 </div>
-                <div id="backend-url-setting">
-                    <label for="api-base-url">Backend URL:</label>
-                    <input type="text" id="api-base-url" placeholder="https://your-backend-url">
-                    <button id="save-url-btn">Save</button>
+                <div id="topbar-right">
+                    <div id="backend-url-setting">
+                        <label for="api-base-url">Backend URL:</label>
+                        <input type="text" id="api-base-url" placeholder="https://your-backend-url">
+                        <button id="save-url-btn">Save</button>
+                    </div>
+                    <button id="settings-btn" aria-label="Settings">⚙</button>
+                    <div id="user-info">
+                        <span id="user-display"></span>
+                        <button id="logout-btn" aria-label="Logout">Logout</button>
+                    </div>
+                    <a href="#admin" id="admin-link" class="hidden" aria-label="Admin panel">Admin</a>
                 </div>
-                <a href="#admin" id="admin-link" class="hidden">Admin</a>
-            </header>
-
-            <div id="chat-container">
-                <aside id="sidebar">
-                    <div id="conversations-header">
-                        <button id="new-conversation-btn">New Chat</button>
-                        <input type="text" id="search-conversations" placeholder="Search conversations..." aria-label="Search conversations">
-                    </div>
-                    <ul id="conversations-list"></ul>
-                </aside>
-
-                <main id="main">
-                    <div id="transcript"></div>
-                    <div id="composer">
-                        <div id="settings">
-                            <select id="provider-select" aria-label="Provider">
-                                <option value="">Select Provider</option>
-                            </select>
-                            <select id="model-select" aria-label="Model" disabled>
-                                <option value="">Select Model</option>
-                            </select>
-                            <input type="number" id="temperature" min="0" max="2" step="0.1" placeholder="Temp" aria-label="Temperature">
-                            <input type="number" id="top-p" min="0" max="1" step="0.01" placeholder="Top-P" aria-label="Top-P">
-                            <input type="number" id="max-tokens" min="1" placeholder="Max Tokens" aria-label="Max Tokens">
-                        </div>
-                        <div id="input-area">
-                            <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
-                            <button id="send-btn" disabled>Send</button>
-                            <button id="cancel-btn" class="hidden">Cancel</button>
-                            <button id="retry-btn" class="hidden">Retry</button>
-                        </div>
-                    </div>
-                    <div id="status-line">
-                        <span id="status-text">Ready</span>
-                        <span id="elapsed-time"></span>
-                        <span id="token-usage"></span>
-                    </div>
-                </main>
             </div>
+
+            <div id="sidebar" role="navigation" aria-label="Conversations">
+                <div id="sidebar-header">
+                    <button id="new-conversation-btn" aria-label="New conversation">New Chat</button>
+                    <input type="text" id="search-conversations" placeholder="Search conversations..." aria-label="Search conversations">
+                </div>
+                <ul id="conversations-list" role="list" aria-label="Conversation threads"></ul>
+            </div>
+
+            <main id="main">
+                <div id="chatHeader">
+                    <h1 id="chat-title">New Chat</h1>
+                    <div id="chat-actions">
+                        <button id="rename-chat-btn" aria-label="Rename conversation">Rename</button>
+                        <button id="delete-chat-btn" aria-label="Delete conversation">Delete</button>
+                    </div>
+                </div>
+                <div id="transcript" role="log" aria-live="polite" aria-label="Chat transcript"></div>
+                <div id="composer">
+                    <div id="input-area">
+                        <textarea id="message-input" placeholder="Type your message..." aria-label="Message input"></textarea>
+                        <button id="send-btn" disabled aria-label="Send message">Send</button>
+                        <button id="cancel-btn" class="hidden" aria-label="Cancel streaming">Cancel</button>
+                        <button id="retry-btn" class="hidden" aria-label="Retry last message">Retry</button>
+                    </div>
+                </div>
+                <div id="status-line">
+                    <span id="status-text">Ready</span>
+                    <span id="elapsed-time"></span>
+                    <span id="token-usage"></span>
+                </div>
+            </main>
+
+            <div id="settingsDrawer" class="hidden" role="dialog" aria-labelledby="settings-title" aria-modal="true">
+                <div id="settings-header">
+                    <h2 id="settings-title">Settings</h2>
+                    <button id="close-settings-btn" aria-label="Close settings">×</button>
+                </div>
+                <div id="settings-content">
+                    <div id="run-settings">
+                        <h3>Run Settings</h3>
+                        <div class="setting-group">
+                            <label for="drawer-temperature">Temperature:</label>
+                            <input type="number" id="drawer-temperature" min="0" max="2" step="0.1">
+                        </div>
+                        <div class="setting-group">
+                            <label for="drawer-top-p">Top-P:</label>
+                            <input type="number" id="drawer-top-p" min="0" max="1" step="0.01">
+                        </div>
+                        <div class="setting-group">
+                            <label for="drawer-max-tokens">Max Tokens:</label>
+                            <input type="number" id="drawer-max-tokens" min="1">
+                        </div>
+                    </div>
+                    <div id="presets">
+                        <h3>Presets</h3>
+                        <select id="preset-select">
+                            <option value="">Select Preset</option>
+                        </select>
+                        <button id="save-preset-btn">Save as Preset</button>
+                        <button id="delete-preset-btn">Delete Preset</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="toastHost" aria-live="assertive" aria-atomic="true"></div>
+            <div id="modalHost"></div>
 
             <div id="diagnostics" class="hidden">
                 <h3>Diagnostics</h3>
