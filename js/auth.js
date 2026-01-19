@@ -58,19 +58,4 @@ async function handleLogout() {
     location.reload(); // Force full reload to clear any cached state
 }
 
-// Initialize auth state on load
-document.addEventListener('DOMContentLoaded', async () => {
-    // Restore user from localStorage
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-        try {
-            setCurrentUser(JSON.parse(storedUser));
-        } catch (error) {
-            console.warn('Failed to parse stored user:', error);
-            localStorage.removeItem('currentUser');
-        }
-    }
-
-    // Check auth with server
-    await checkAuth();
-});
+// Auth state is initialized by app.js - no need for separate listener
