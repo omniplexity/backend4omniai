@@ -255,5 +255,21 @@
     <script src="js/render.js"></script>
     <script src="js/admin.js"></script>
     <script src="js/app.js"></script>
+
+    <!-- Debug: Force show login view -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM loaded, forcing login view');
+            setTimeout(() => {
+                try {
+                    document.querySelectorAll('.view').forEach(view => view.classList.add('hidden'));
+                    document.getElementById('login-view').classList.remove('hidden');
+                    console.log('Login view should be visible now');
+                } catch (error) {
+                    console.error('Error showing login view:', error);
+                }
+            }, 100);
+        });
+    </script>
 </body>
 </html>
