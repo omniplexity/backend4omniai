@@ -8,6 +8,37 @@
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
+    <div id="fatal-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:#0b0b0bcc;color:#fff;padding:16px;font:14px/1.45 system-ui;">
+      <div style="max-width:900px;margin:0 auto;background:#111;border:1px solid #333;border-radius:12px;padding:16px;box-shadow:0 10px 40px rgba(0,0,0,.6);">
+        <div style="font-weight:700;margin-bottom:8px;">OmniAI failed to start</div>
+        <div style="opacity:.8;margin-bottom:12px;">If this persists, open DevTools Console and fix the first error.</div>
+        <pre id="fatal-text" style="white-space:pre-wrap;margin:0;"></pre>
+      </div>
+    </div>
+    <script>
+    (function(){
+      const show = (msg) => {
+        const o = document.getElementById('fatal-overlay');
+        const t = document.getElementById('fatal-text');
+        if (!o || !t) return;
+        t.textContent = msg;
+        o.style.display = 'block';
+      };
+      window.__SHOW_FATAL__ = show;
+      window.addEventListener('error', (e) => {
+        const msg = e?.error?.stack || e?.message || String(e);
+        show(msg);
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        const msg = e?.reason?.stack || e?.reason || String(e);
+        show(msg);
+      });
+      setTimeout(() => {
+        if (!window.__APP_READY__) show('App did not initialize (timeout). Open DevTools Console for the first error.');
+      }, 2500);
+    })();
+    </script>
+
     <div id="app" class="app-shell">
         <div id="login-view" class="view hidden">
             <h1>Login to OmniAI</h1>

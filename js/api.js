@@ -12,7 +12,7 @@ function setCsrfToken(token) {
 }
 
 // Debug logging (check if enabled in app.js)
-const DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
+var DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
 function debugLog(type, data = {}) {
     if (DEBUG) {
         console.log(`[${new Date().toISOString()}] ${type}`, data);

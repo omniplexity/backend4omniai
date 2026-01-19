@@ -18,7 +18,7 @@ let state = {
 };
 
 // Debug logging (enabled via ?debug=1)
-const DEBUG = new URLSearchParams(window.location.search).has('debug');
+var DEBUG = new URLSearchParams(window.location.search).has('debug');
 function debugLog(type, data = {}) {
     if (DEBUG) {
         console.log(`[${new Date().toISOString()}] ${type}`, data);
@@ -1102,8 +1102,14 @@ function bindUI() {
 
 // Initialize app
 document.addEventListener('DOMContentLoaded', async () => {
-    bindUI();
-    window.addEventListener('hashchange', handleRouteChange);
-    await initializeAuth();
-    handleRouteChange();
+    try {
+        bindUI();
+        window.addEventListener('hashchange', handleRouteChange);
+        await initializeAuth();
+        handleRouteChange();
+        window.__APP_READY__ = true;
+    } catch (err) {
+        console.error('Boot failure:', err);
+        if (window.__SHOW_FATAL__) window.__SHOW_FATAL__(err?.stack || String(err));
+    }
 });

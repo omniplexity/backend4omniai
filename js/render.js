@@ -256,3 +256,6 @@ function hideActionButtons() {
 function clearMessageInput() {
     document.getElementById('message-input').value = '';
 }
+
+// Export to window for app.js
+window.renderTranscript = renderTranscript;
