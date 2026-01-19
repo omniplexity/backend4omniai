@@ -335,20 +335,41 @@ async function initializeChat() {
         updateSettingsInputs();
         updateSendButtonState();
 
+        // Always ensure we have an active conversation
+        let conversationReady = false;
+
+        // Try to restore saved conversation
         const savedConversationId = getCurrentConversationId();
         if (savedConversationId) {
             try {
                 await selectConversation(savedConversationId);
+                conversationReady = true;
             } catch (error) {
-                // Conversation doesn't exist, create new one
-                console.warn('Saved conversation not found, creating new one');
-                await createNewConversation();
+                console.warn('Saved conversation not found, will create new one');
             }
-        } else {
+        }
+
+        // If no conversation yet, create one
+        if (!conversationReady) {
+            console.log('Creating new conversation...');
             await createNewConversation();
         }
+
+        // Final check - ensure we have a conversation
+        if (!currentConversationId) {
+            console.error('Failed to establish conversation, retrying...');
+            await createNewConversation();
+        }
+
+        console.log('Chat initialized with conversation:', currentConversationId);
     } catch (error) {
         showError('Failed to initialize chat: ' + error.message);
+        // Last resort - try to create a conversation anyway
+        try {
+            await createNewConversation();
+        } catch (e) {
+            console.error('Could not create fallback conversation:', e);
+        }
     }
 }
 
@@ -387,8 +408,12 @@ async function createNewConversation() {
         currentConversationId = conversation.id;
         renderTranscript([]);
         updateStatusLine('Ready');
+        // Refresh conversation list to show the new one
+        await loadConversations();
+        console.log('Created new conversation:', conversation.id);
     } catch (error) {
         showError('Failed to create conversation: ' + error.message);
+        throw error; // Re-throw so callers know it failed
     }
 }
 
