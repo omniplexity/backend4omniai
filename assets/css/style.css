@@ -1,29 +1,25 @@
 /* OmniAI WebUI Styles - GPT-5 Level Redesign */
 
 :root {
-    /* Premium GPT-5-like Dark Theme with Enhanced Depth */
-    --bg: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
-    --bg-solid: #0f0f0f;
-    --panel: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
-    --panel-solid: #1a1a1a;
-    --panel2: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
-    --panel2-solid: #2a2a2a;
-    --border: #404040;
-    --text: #ffffff;
-    --muted: #b0b0b0;
-    --muted2: #808080;
-    --accent: #007aff;
+    /* GPT-5-like Dark Theme */
+    --bg: #0b0b0d;
+    --panel: #111114;
+    --panel2: #16161a;
+    --border: rgba(255,255,255,0.08);
+    --text: rgba(255,255,255,0.92);
+    --muted: rgba(255,255,255,0.62);
+    --accent: #1a7fff;
     --accent-hover: #0056cc;
     --danger: #ff3b30;
     --success: #34c759;
-    --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --shadow: 0 8px 30px rgba(0,0,0,.45);
     --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
     --shadow-inner: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 
     /* Layout */
     --topbar-height: 52px;
     --sidebar-width: 300px;
-    --chat-max-width: 920px;
+    --chat-max-width: 900px;
     --radius: 16px;
     --radius-sm: 10px;
     --radius-lg: 20px;
@@ -111,13 +107,21 @@ body {
 }
 
 .model-picker select {
-    padding: var(--space-1) var(--space-2);
+    height: 36px;
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border-radius: 12px;
     background-color: var(--panel2);
     color: var(--text);
     font-size: 13px;
     min-width: 120px;
+    transition: var(--transition);
+}
+
+.model-picker select:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-color: var(--accent);
 }
 
 .run-settings-summary {
@@ -354,8 +358,8 @@ body {
 }
 
 #chat-actions button {
-    background: none;
-    border: none;
+    background: transparent;
+    border: 1px solid var(--border);
     color: var(--muted);
     font-size: 13px;
     cursor: pointer;
@@ -367,6 +371,7 @@ body {
 #chat-actions button:hover {
     color: var(--text);
     background-color: var(--panel2);
+    border-color: var(--accent);
 }
 
 /* Welcome Panel */
@@ -391,8 +396,8 @@ body {
 }
 
 .suggestion-chips {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: var(--space-2);
     justify-content: center;
 }
@@ -423,7 +428,7 @@ body {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: var(--space-5);
+    gap: 16px;
     scrollbar-width: thin;
     scrollbar-color: var(--border) var(--bg);
 }
@@ -452,12 +457,13 @@ body {
 }
 
 .message.user {
-    background-color: var(--accent);
-    color: white;
+    background-color: var(--panel2);
+    color: var(--text);
     align-self: flex-end;
     margin-left: auto;
     max-width: 80%;
     border-bottom-right-radius: var(--space-1);
+    border: 1px solid var(--border);
 }
 
 .message.assistant {
@@ -501,7 +507,7 @@ body {
 
 /* Code Blocks */
 .message pre {
-    background-color: var(--panel2);
+    background-color: #0f0f12;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: var(--space-3);
