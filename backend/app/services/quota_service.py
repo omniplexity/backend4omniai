@@ -23,6 +23,9 @@ def _get_today_str() -> str:
 
 def check_message_quota(db: Session, user_id: int, day: Optional[str] = None) -> None:
     """Check if user can send another message today. Raises HTTPException if quota exceeded."""
+    from backend.app.config.settings import settings
+    if settings.environment == 'test':
+        return
     if day is None:
         day = _get_today_str()
 

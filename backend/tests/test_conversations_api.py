@@ -206,7 +206,10 @@ def test_request_body_enforced_for_post_stream(authenticated_client):
     )
 
     # Try without body - should fail
-    response = authenticated_client.post(f"/conversations/{conv_id}/stream")
+    response = authenticated_client.post(
+        f"/conversations/{conv_id}/stream",
+        headers={"X-CSRF-Token": authenticated_client.csrf_token}
+    )
     assert response.status_code == 400  # Bad request for missing body
 
 

@@ -129,7 +129,7 @@ def append_message(
     }
 
 
-@router.post("/conversations/{conversation_id}/stream")
+@router.post("/conversations/{conversation_id}/stream", dependencies=[Depends(require_csrf)])
 def stream_chat(
     conversation_id: int,
     req: StreamChatRequest,
@@ -150,9 +150,7 @@ def stream_chat(
         raise HTTPException(status_code=404, detail={"code": "CONVERSATION_NOT_FOUND", "message": "Conversation not found"})
 
     # Get provider
-    provider = registry.get_provider(req.provider_id)
-    if not provider:
-        raise HTTPException(status_code=400, detail={"code": "PROVIDER_NOT_FOUND", "message": f"Provider {req.provider_id} not found"})
+    provider = registry.get(req.provider_id)
 
     # Check if model is available
     if not any(m.id == req.model for m in provider.list_models()):
@@ -218,7 +216,7 @@ async def stream_chat_generator(
         last_heartbeat = time.time()
 
         # Stream from provider
-        provider = registry.get_provider(provider_id)
+        provider = registry.get(provider_id)
         async for event in provider.chat_stream(request):
             # Check for cancellation
             if generation_manager.is_canceled(generation_id):
@@ -269,7 +267,7 @@ async def _consume_stream(
     provider_id: str, request: dict, generation_id: str, user: User, conversation_id: int, db: Session
 ) -> None:
     """Consume the stream to ensure it completes (for task tracking)."""
-    provider = registry.get_provider(provider_id)
+    provider = registry.get(provider_id)
     async for _ in provider.chat_stream(request):
         if generation_manager.is_canceled(generation_id):
             break

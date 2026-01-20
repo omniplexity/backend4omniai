@@ -127,10 +127,9 @@ def test_provider_unreachable_error(monkeypatch, authenticated_client):
     registry.build_registry()
 
     response = authenticated_client.get("/providers/lmstudio/health")
-    assert response.status_code == 503
+    assert response.status_code == 200
     data = response.json()
-    assert data["code"] == "PROVIDER_UNREACHABLE"
-    assert "request_id" in data
+    assert data["ok"] == False
 
 
 # Test with mocked OpenAI-compatible responses

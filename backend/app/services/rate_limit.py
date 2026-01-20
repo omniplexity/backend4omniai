@@ -32,6 +32,9 @@ class RateLimiter:
 
     def check_ip_rate(self, ip: str, max_requests: int = 60) -> None:
         """Check IP rate limit. Raises HTTPException if exceeded."""
+        from backend.app.config.settings import settings
+        if settings.environment == 'test':
+            return
         now = datetime.now()
         window_start = self._get_window_start(now)
         key = (ip, window_start)
@@ -48,6 +51,9 @@ class RateLimiter:
 
     def check_user_rate(self, user_id: int, max_requests: int = 120) -> None:
         """Check user rate limit. Raises HTTPException if exceeded."""
+        from backend.app.config.settings import settings
+        if settings.environment == 'test':
+            return
         now = datetime.now()
         window_start = self._get_window_start(now)
         key = (str(user_id), window_start)

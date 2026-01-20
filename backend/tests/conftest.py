@@ -1,5 +1,6 @@
 import pytest
 import gc
+import os
 from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
@@ -11,6 +12,42 @@ from fastapi.testclient import TestClient
 from backend.app.main import app
 from backend.app.db.session import get_db
 from backend.app.config.settings import settings
+from backend.app.providers.base import Provider
+from backend.app.providers.types import ModelInfo, ProviderCapabilities, ProviderHealth, StreamEvent
+
+# Set test environment
+os.environ['ENV'] = 'test'
+
+
+class FakeProvider(Provider):
+    """Fake provider for testing chat functionality."""
+
+    provider_id = "fake"
+    display_name = "Fake Provider"
+
+    def __init__(self):
+        self.models = [
+            ModelInfo(id="fake-model", label="Fake Model", context_length=4096)
+        ]
+
+    def list_models(self) -> list[ModelInfo]:
+        return self.models
+
+    async def chat_stream(self, req: dict):
+        """Yield fake stream events."""
+        yield StreamEvent(type="delta", delta="Hello")
+        yield StreamEvent(type="delta", delta=" world")
+        yield StreamEvent(type="usage", usage={"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+        yield StreamEvent(type="done")
+
+    def chat_once(self, req: dict):
+        return {"content": "Hello world", "usage": {"total_tokens": 15}}
+
+    def healthcheck(self) -> ProviderHealth:
+        return ProviderHealth(ok=True, detail="Fake provider is healthy")
+
+    def capabilities(self) -> ProviderCapabilities:
+        return ProviderCapabilities(streaming=True, vision=False, tools=False, json_mode=False, max_context_tokens=4096)
 
 
 @pytest.fixture(scope="session")
@@ -97,3 +134,38 @@ def client(engine, db_session):
         settings.cookie_secure = original_cookie_secure
         settings.invite_only = original_invite_only
         settings.admin_bootstrap_token = original_admin_bootstrap_token
+
+
+@pytest.fixture
+def authenticated_client(client):
+    """Test client with authenticated admin user."""
+    # Bootstrap admin
+    response = client.post("/admin/bootstrap", json={
+        "username": "admin",
+        "password": "adminpass"
+    }, headers={"X-Bootstrap-Token": "test-bootstrap-token"})
+    assert response.status_code == 200
+
+    session_cookie = response.cookies[settings.session_cookie_name]
+    csrf_token = response.json()["csrf_token"]
+
+    client.cookies.set(settings.session_cookie_name, session_cookie)
+    client.csrf_token = csrf_token  # Store for use in tests
+
+    # Add fake provider to registry for chat tests
+    from backend.app.providers.registry import registry
+    registry._providers["fake"] = FakeProvider()
+    registry._providers["lmstudio"] = FakeProvider()  # Override with fake for testing
+
+    # Set high quota for admin user
+    from backend.app.db.models import UserQuota
+    quota = client.app.state.db.query(UserQuota).filter(UserQuota.user_id == 1).first()
+    if not quota:
+        quota = UserQuota(user_id=1, messages_per_day=10000, tokens_per_day=1000000)
+        client.app.state.db.add(quota)
+    else:
+        quota.messages_per_day = 10000
+        quota.tokens_per_day = 1000000
+    client.app.state.db.commit()
+
+    return client
