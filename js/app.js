@@ -1,275 +1,581 @@
 // OmniAI WebUI Main Application Controller
+// Single-init pattern with defensive DOM bindings
 
-// Defensive DOM helpers - prevent crashes on missing elements
-const el = (id) => document.getElementById(id);
-const on = (id, evt, fn) => {
-    const n = el(id);
-    if (n) n.addEventListener(evt, fn);
-    else console.warn(`Element with id '${id}' not found, skipping event listener for '${evt}'`);
-};
+(function() {
+    'use strict';
 
-// Centralized State
-let state = {
-    session: { user: null },
-    threads: [],
-    activeThreadId: null,
-    run: { model: null, temperature: null, top_p: null, max_tokens: null }, // null means use provider defaults
-    stream: { status: "idle", elapsedMs: 0, usage: null, lastError: null }
-};
+    // ============================================
+    // STATE
+    // ============================================
 
-// Debug logging (enabled via ?debug=1)
-function debugLog(type, data = {}) {
-    if (!window.__OMNI_DEBUG__) return;
-    console.log(`[${new Date().toISOString()}] ${type}`, data);
-}
+    let state = {
+        session: { user: null },
+        threads: [],
+        activeThreadId: null,
+        run: { model: null, temperature: 0.7, top_p: 1, max_tokens: 1024 },
+        stream: { status: 'idle', elapsedMs: 0, usage: null, lastError: null }
+    };
 
-// Global logger for other modules
-window.__omniDebugLog = debugLog;
+    // Streaming state
+    let currentStreamingParser = null;
+    let streamingStartTime = null;
+    let currentGenerationId = null;
+    let currentConversationId = null;
 
-// Get generation settings (only non-null values)
-function getGenerationSettings() {
-    const settings = {};
-    if (state.run.temperature !== null) settings.temperature = state.run.temperature;
-    if (state.run.top_p !== null) settings.top_p = state.run.top_p;
-    if (state.run.max_tokens !== null) settings.max_tokens = state.run.max_tokens;
-    return settings;
-}
+    // UI state
+    let sidebarOpen = false;
+    let settingsDrawerOpen = false;
+    let controlsPanelOpen = false;
+    let userScrolledUp = false;
 
-// Legacy variables (to be phased out)
-let currentConversationId = null;
-let currentStreamingParser = null;
-let streamingStartTime = null;
-let currentGenerationId = null;
+    // ============================================
+    // UTILITY FUNCTIONS
+    // ============================================
 
-// Render Functions
-function renderTopbar() {
-    const user = state.session.user;
-    const userDisplay = document.getElementById('user-display');
-    if (user) {
-        userDisplay.textContent = user.username;
-        const adminLink = document.getElementById('admin-link');
-        if (user.role === 'admin') {
-            adminLink.classList.remove('hidden');
-        } else {
-            adminLink.classList.add('hidden');
-        }
-    } else {
-        userDisplay.textContent = '';
-        document.getElementById('admin-link').classList.add('hidden');
+    function $(id) {
+        return document.getElementById(id);
     }
 
-    // Run settings summary
-    let summary;
-    if (state.run.temperature === null && state.run.top_p === null && state.run.max_tokens === null) {
-        summary = 'Using provider defaults';
-    } else {
-        summary = `Temp: ${state.run.temperature ?? 'default'}, Top-P: ${state.run.top_p ?? 'default'}, Max: ${state.run.max_tokens ?? 'default'}`;
-    }
-    document.getElementById('run-settings-summary').textContent = summary;
-
-    // Connection indicator
-    const indicator = document.getElementById('connection-indicator');
-    indicator.textContent = '● Connected'; // TODO: Update based on actual connection status
-}
-
-function renderSidebar() {
-    renderConversations(state.threads);
-}
-
-function renderChatHeader() {
-    const activeThread = state.threads.find(t => t.id === state.activeThreadId);
-    const title = activeThread?.title || 'New Chat';
-    document.getElementById('chat-title').textContent = title;
-}
-
-function renderTranscript(messages) {
-    // Use the renderTranscript from render.js
-    if (window.Render?.renderTranscript) {
-        window.Render.renderTranscript(messages);
-    } else {
-        console.error('renderTranscript not available');
-        return;
+    function $$(selector) {
+        return document.querySelectorAll(selector);
     }
 
-    // Show/hide welcome panel based on messages
-    const welcomePanel = document.getElementById('welcome-panel');
-    if (welcomePanel) {
-        if (messages.length === 0) {
-            welcomePanel.classList.remove('hidden');
-        } else {
-            welcomePanel.classList.add('hidden');
+    function bindClick(id, handler) {
+        const el = $(id);
+        if (el) {
+            el.addEventListener('click', handler);
         }
     }
 
-    scrollToBottomIfNeeded();
-}
-
-function renderComposer() {
-    // Update send button state
-    const providerId = getSelectedProvider();
-    const modelId = getSelectedModel();
-    const sendBtn = document.getElementById('send-btn');
-    sendBtn.disabled = !providerId || !modelId || !currentConversationId || state.stream.status === 'streaming';
-
-    // Show/hide cancel/retry buttons
-    const cancelBtn = document.getElementById('cancel-btn');
-    const retryBtn = document.getElementById('retry-btn');
-
-    if (state.stream.status === 'streaming') {
-        cancelBtn.classList.remove('hidden');
-        retryBtn.classList.add('hidden');
-    } else if (state.stream.status === 'error' || state.stream.status === 'cancelled') {
-        cancelBtn.classList.add('hidden');
-        retryBtn.classList.remove('hidden');
-    } else {
-        cancelBtn.classList.add('hidden');
-        retryBtn.classList.add('hidden');
+    function bindEvent(id, event, handler) {
+        const el = $(id);
+        if (el) {
+            el.addEventListener(event, handler);
+        }
     }
-}
 
-// Settings drawer rendering is now handled by loadSettingsUI()
+    function show(id) {
+        const el = $(id);
+        if (el) el.classList.remove('hidden');
+    }
 
-function renderToasts() {
-    const toastHost = document.getElementById('toastHost');
-    toastHost.innerHTML = '';
+    function hide(id) {
+        const el = $(id);
+        if (el) el.classList.add('hidden');
+    }
 
-    if (state.stream.lastError) {
+    function toggle(id, force) {
+        const el = $(id);
+        if (el) el.classList.toggle('hidden', !force);
+    }
+
+    // ============================================
+    // ROUTING
+    // ============================================
+
+    function getRoute() {
+        const hash = window.location.hash.slice(1);
+        return hash || 'login';
+    }
+
+    function setRoute(route) {
+        window.location.hash = route;
+    }
+
+    function handleRouteChange() {
+        const route = getRoute();
+        const user = getCurrentUser();
+
+        // Unauthenticated users can only access login/register
+        if (!user && route !== 'register') {
+            showView('login-view');
+            return;
+        }
+
+        // Admin route requires admin role
+        if (route === 'admin' && (!user || user.role !== 'admin')) {
+            setRoute('chat');
+            return;
+        }
+
+        switch (route) {
+            case 'login':
+                showView('login-view');
+                break;
+            case 'register':
+                showView('register-view');
+                break;
+            case 'admin':
+                if (user && user.role === 'admin') {
+                    showView('admin-view');
+                    initializeAdmin();
+                } else {
+                    setRoute('chat');
+                }
+                break;
+            case 'chat':
+                if (user) {
+                    showView('chat-view');
+                    initializeChat();
+                } else {
+                    setRoute('login');
+                }
+                break;
+            default:
+                setRoute('chat');
+        }
+    }
+
+    // ============================================
+    // VIEW MANAGEMENT
+    // ============================================
+
+    function showView(viewId) {
+        $$('.view').forEach(view => view.classList.add('hidden'));
+        const view = $(viewId);
+        if (view) view.classList.remove('hidden');
+    }
+
+    // ============================================
+    // USER DISPLAY
+    // ============================================
+
+    function updateUserDisplay(user) {
+        const displays = ['user-display', 'sidebar-user-display', 'admin-user-display'];
+        displays.forEach(id => {
+            const el = $(id);
+            if (el) {
+                el.textContent = user ? user.username || user.email || 'User' : '';
+            }
+        });
+
+        // Show/hide admin link
+        const adminLink = $('admin-link');
+        if (adminLink) {
+            if (user && user.role === 'admin') {
+                adminLink.classList.remove('hidden');
+            } else {
+                adminLink.classList.add('hidden');
+            }
+        }
+
+        // Update state
+        state.session.user = user;
+    }
+
+    // ============================================
+    // SIDEBAR
+    // ============================================
+
+    function toggleSidebar(open) {
+        sidebarOpen = open !== undefined ? open : !sidebarOpen;
+        const sidebar = $('sidebar');
+        const backdrop = $('sidebar-backdrop');
+        const toggle = $('sidebar-toggle');
+
+        if (sidebar) sidebar.classList.toggle('open', sidebarOpen);
+        if (backdrop) backdrop.classList.toggle('visible', sidebarOpen);
+        if (backdrop) backdrop.classList.toggle('hidden', !sidebarOpen);
+        if (toggle) toggle.setAttribute('aria-expanded', sidebarOpen);
+    }
+
+    function closeSidebar() {
+        toggleSidebar(false);
+    }
+
+    // ============================================
+    // SETTINGS DRAWER
+    // ============================================
+
+    function toggleSettingsDrawer(open) {
+        settingsDrawerOpen = open !== undefined ? open : !settingsDrawerOpen;
+        const drawer = $('settingsDrawer');
+        if (drawer) {
+            drawer.classList.toggle('hidden', !settingsDrawerOpen);
+        }
+
+        // Close controls panel if settings drawer opens
+        if (settingsDrawerOpen) {
+            closeControlsPanel();
+        }
+    }
+
+    function closeSettingsDrawer() {
+        toggleSettingsDrawer(false);
+    }
+
+    // ============================================
+    // CONTROLS PANEL
+    // ============================================
+
+    function toggleControlsPanel(open) {
+        controlsPanelOpen = open !== undefined ? open : !controlsPanelOpen;
+        const panel = $('controls-panel');
+        if (panel) {
+            panel.classList.toggle('hidden', !controlsPanelOpen);
+        }
+
+        // Close settings drawer if controls panel opens
+        if (controlsPanelOpen) {
+            closeSettingsDrawer();
+            syncQuickControls();
+        }
+    }
+
+    function closeControlsPanel() {
+        toggleControlsPanel(false);
+    }
+
+    function syncQuickControls() {
+        const temp = getTemperature();
+        const topP = getTopP();
+        const maxTokens = getMaxTokens();
+
+        const quickTemp = $('quick-temperature');
+        const quickTopP = $('quick-top-p');
+        const quickMaxTokens = $('quick-max-tokens');
+        const tempDisplay = $('temp-display');
+        const topPDisplay = $('top-p-display');
+
+        if (quickTemp) quickTemp.value = temp;
+        if (quickTopP) quickTopP.value = topP;
+        if (quickMaxTokens) quickMaxTokens.value = maxTokens || '';
+        if (tempDisplay) tempDisplay.textContent = temp.toFixed(1);
+        if (topPDisplay) topPDisplay.textContent = topP.toFixed(2);
+    }
+
+    // ============================================
+    // SETTINGS SYNC
+    // ============================================
+
+    function syncDrawerSettings() {
+        const temp = getTemperature();
+        const topP = getTopP();
+        const maxTokens = getMaxTokens();
+
+        const drawerTemp = $('drawer-temperature');
+        const drawerTempRange = $('drawer-temperature-range');
+        const drawerTopP = $('drawer-top-p');
+        const drawerTopPRange = $('drawer-top-p-range');
+        const drawerMaxTokens = $('drawer-max-tokens');
+
+        if (drawerTemp) drawerTemp.value = temp;
+        if (drawerTempRange) drawerTempRange.value = temp;
+        if (drawerTopP) drawerTopP.value = topP;
+        if (drawerTopPRange) drawerTopPRange.value = topP;
+        if (drawerMaxTokens) drawerMaxTokens.value = maxTokens || '';
+    }
+
+    function updateApiBaseUrlInput() {
+        const input = $('api-base-url');
+        if (input) {
+            input.value = getApiBaseUrl();
+        }
+    }
+
+    // ============================================
+    // CONNECTION STATUS
+    // ============================================
+
+    function updateConnectionStatus(status) {
+        const indicator = $('connection-indicator');
+        const text = $('connection-text');
+
+        if (indicator) {
+            indicator.classList.remove('online', 'offline', 'connecting');
+            indicator.classList.add(status);
+        }
+
+        if (text) {
+            const labels = {
+                online: 'Connected',
+                offline: 'Offline',
+                connecting: 'Connecting...'
+            };
+            text.textContent = labels[status] || 'Unknown';
+        }
+    }
+
+    // ============================================
+    // CHAT HEADER
+    // ============================================
+
+    function updateChatTitle(title) {
+        const titleEl = $('chat-title');
+        if (titleEl) {
+            titleEl.textContent = title || 'New Chat';
+        }
+    }
+
+    // ============================================
+    // EMPTY STATE
+    // ============================================
+
+    function showEmptyState() {
+        const emptyState = $('empty-state');
+        if (emptyState) emptyState.classList.remove('hidden');
+    }
+
+    function hideEmptyState() {
+        const emptyState = $('empty-state');
+        if (emptyState) emptyState.classList.add('hidden');
+    }
+
+    // ============================================
+    // STATUS LINE
+    // ============================================
+
+    function updateStatusLine(text, elapsed = null, usage = null) {
+        const statusText = $('status-text');
+        const elapsedTime = $('elapsed-time');
+        const tokenUsage = $('token-usage');
+
+        if (statusText) statusText.textContent = text;
+
+        if (elapsedTime) {
+            elapsedTime.textContent = elapsed !== null ? `${elapsed.toFixed(1)}s` : '';
+        }
+
+        if (tokenUsage) {
+            if (usage) {
+                const parts = [];
+                if (usage.prompt_tokens !== undefined) parts.push(`P:${usage.prompt_tokens}`);
+                if (usage.completion_tokens !== undefined) parts.push(`C:${usage.completion_tokens}`);
+                if (usage.total_tokens !== undefined) parts.push(`T:${usage.total_tokens}`);
+                tokenUsage.textContent = parts.join(' ');
+            } else {
+                tokenUsage.textContent = '';
+            }
+        }
+    }
+
+    // ============================================
+    // COMPOSER STATE
+    // ============================================
+
+    function updateComposerState() {
+        const providerId = getSelectedProvider();
+        const modelId = getSelectedModel();
+        const sendBtn = $('send-btn');
+        const cancelBtn = $('cancel-btn');
+        const messageInput = $('message-input');
+
+        const isStreaming = state.stream.status === 'streaming';
+        const hasInput = messageInput && messageInput.value.trim().length > 0;
+        const hasProviderModel = providerId && modelId;
+
+        if (sendBtn) {
+            sendBtn.disabled = isStreaming || !hasInput || !hasProviderModel;
+            sendBtn.classList.toggle('hidden', isStreaming);
+        }
+
+        if (cancelBtn) {
+            cancelBtn.classList.toggle('hidden', !isStreaming);
+        }
+    }
+
+    function clearMessageInput() {
+        const input = $('message-input');
+        if (input) {
+            input.value = '';
+            input.style.height = 'auto';
+        }
+        updateComposerState();
+    }
+
+    // ============================================
+    // AUTO-RESIZE TEXTAREA
+    // ============================================
+
+    function autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        textarea.style.height = 'auto';
+        textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+    }
+
+    // ============================================
+    // SCROLL MANAGEMENT
+    // ============================================
+
+    function isNearBottom(element, threshold = 100) {
+        if (!element) return true;
+        return element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
+    }
+
+    function scrollToBottom(element) {
+        if (!element) return;
+        element.scrollTop = element.scrollHeight;
+    }
+
+    function scrollToBottomIfNeeded() {
+        const transcript = $('transcript');
+        if (!transcript) return;
+
+        if (!userScrolledUp && isNearBottom(transcript)) {
+            scrollToBottom(transcript);
+            hideJumpToLatest();
+        } else if (!isNearBottom(transcript)) {
+            showJumpToLatest();
+        }
+    }
+
+    function showJumpToLatest() {
+        const pill = $('jump-to-latest');
+        if (pill) pill.classList.remove('hidden');
+    }
+
+    function hideJumpToLatest() {
+        const pill = $('jump-to-latest');
+        if (pill) pill.classList.add('hidden');
+    }
+
+    function handleTranscriptScroll() {
+        const transcript = $('transcript');
+        if (!transcript) return;
+
+        userScrolledUp = !isNearBottom(transcript);
+
+        if (isNearBottom(transcript)) {
+            hideJumpToLatest();
+        }
+    }
+
+    // ============================================
+    // TOAST NOTIFICATIONS
+    // ============================================
+
+    function showToast(message, type = 'info', duration = 4000) {
+        const host = $('toastHost');
+        if (!host) return;
+
         const toast = document.createElement('div');
-        toast.className = 'toast error';
+        toast.className = `toast ${type}`;
         toast.innerHTML = `
-            <div>Error: ${state.stream.lastError.message}</div>
-            <button onclick="this.parentElement.remove()">×</button>
+            <span>${message}</span>
+            <button class="btn-close" onclick="this.parentElement.remove()">
+                <span class="icon-close"></span>
+            </button>
         `;
-        toastHost.appendChild(toast);
-    }
-}
 
-function updateStatusLine(text, elapsed = null, usage = null) {
-    const statusText = document.getElementById('status-text');
-    const elapsedTime = document.getElementById('elapsed-time');
-    const tokenUsage = document.getElementById('token-usage');
+        host.appendChild(toast);
 
-    statusText.textContent = text;
-
-    if (elapsed !== null) {
-        elapsedTime.textContent = `${elapsed.toFixed(1)}s`;
-    } else {
-        elapsedTime.textContent = '';
+        if (duration > 0) {
+            setTimeout(() => {
+                toast.remove();
+            }, duration);
+        }
     }
 
-    if (usage) {
-        const total = usage.prompt_tokens + usage.completion_tokens;
-        tokenUsage.textContent = `${total} tokens`;
-    } else {
-        tokenUsage.textContent = '';
+    function showError(message) {
+        showToast(message, 'error', 6000);
     }
-}
 
-// Auto-scroll logic
-function scrollToBottomIfNeeded() {
-    const transcript = document.getElementById('transcript');
-    const isAtBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 100;
-
-    if (isAtBottom) {
-        transcript.scrollTop = transcript.scrollHeight;
-    } else {
-        // Show jump to latest pill if not at bottom and new content arrived
-        showJumpToLatest();
+    function showSuccess(message) {
+        showToast(message, 'success');
     }
-}
 
-function showJumpToLatest() {
-    let pill = document.getElementById('jump-to-latest');
-    if (!pill) {
-        pill = document.createElement('button');
-        pill.id = 'jump-to-latest';
-        pill.textContent = 'Jump to latest';
-        pill.className = 'jump-pill';
-        pill.onclick = () => {
-            document.getElementById('transcript').scrollTop = document.getElementById('transcript').scrollHeight;
-            pill.classList.remove('visible');
-        };
-        document.body.appendChild(pill);
-    } else {
-        pill.classList.add('visible');
+    // ============================================
+    // BANNERS
+    // ============================================
+
+    function showErrorBanner(message) {
+        const banner = $('error-banner');
+        const messageEl = $('error-message');
+        if (banner && messageEl) {
+            messageEl.textContent = message;
+            banner.classList.remove('hidden');
+        }
     }
-}
 
-// Incremental transcript updates
-function appendToLastMessage(content) {
-    const transcript = document.getElementById('transcript');
-    const lastMessage = transcript.lastElementChild;
-    if (lastMessage && lastMessage.classList.contains('assistant')) {
-        lastMessage.innerHTML += content.replace(/\n/g, '<br>');
+    function hideErrorBanner() {
+        const banner = $('error-banner');
+        if (banner) banner.classList.add('hidden');
+    }
+
+    function showDisconnectBanner() {
+        const banner = $('disconnect-banner');
+        if (banner) banner.classList.remove('hidden');
+    }
+
+    function hideDisconnectBanner() {
+        const banner = $('disconnect-banner');
+        if (banner) banner.classList.add('hidden');
+    }
+
+    // ============================================
+    // TRANSCRIPT RENDERING
+    // ============================================
+
+    function renderTranscriptMessages(messages) {
+        const transcript = $('transcript');
+        if (!transcript) return;
+
+        // Clear existing messages but keep empty state
+        const emptyState = $('empty-state');
+        transcript.innerHTML = '';
+
+        if (messages.length === 0) {
+            if (emptyState) transcript.appendChild(emptyState);
+            showEmptyState();
+            return;
+        }
+
+        hideEmptyState();
+
+        messages.forEach((msg, index) => {
+            const card = createMessageCard(msg, index);
+            transcript.appendChild(card);
+        });
+
+        scrollToBottom(transcript);
+    }
+
+    function addMessageToTranscript(role, content, isStreaming = false) {
+        const transcript = $('transcript');
+        if (!transcript) return;
+
+        hideEmptyState();
+
+        const msg = { role, content };
+        const card = createMessageCard(msg, -1);
+        if (isStreaming) {
+            card.classList.add('streaming');
+        }
+        transcript.appendChild(card);
+        scrollToBottomIfNeeded();
+
+        return card;
+    }
+
+    function appendToLastMessage(content) {
+        const transcript = $('transcript');
+        if (!transcript) return;
+
+        const lastCard = transcript.querySelector('.message-card.streaming');
+        if (lastCard) {
+            const contentEl = lastCard.querySelector('.message-content');
+            if (contentEl) {
+                contentEl.innerHTML = renderMessageContent(contentEl.textContent + content);
+            }
+        }
+
         scrollToBottomIfNeeded();
     }
-}
 
-function finalizeLastMessage() {
-    const transcript = document.getElementById('transcript');
-    const lastMessage = transcript.lastElementChild;
-    if (lastMessage && lastMessage.classList.contains('assistant')) {
-        lastMessage.classList.remove('streaming');
-    }
-}
+    function finalizeLastMessage() {
+        const transcript = $('transcript');
+        if (!transcript) return;
 
-// Routing
-function getRoute() {
-    const hash = window.location.hash.slice(1);
-    return hash || 'login';
-}
-
-function setRoute(route) {
-    window.location.hash = route;
-}
-
-function handleRouteChange() {
-    const route = getRoute();
-    const user = getCurrentUser();
-
-    if (!user && route !== 'register') {
-        showView('login-view');
-        return;
+        const streamingCards = transcript.querySelectorAll('.message-card.streaming');
+        streamingCards.forEach(card => card.classList.remove('streaming'));
     }
 
-    // Check admin access for admin routes
-    if (route === 'admin' && (!user || user.role !== 'admin')) {
-        setRoute('chat');
-        return;
-    }
+    // ============================================
+    // AUTHENTICATION
+    // ============================================
 
-    switch (route) {
-        case 'login':
-            showView('login-view');
-            break;
-        case 'register':
-            showView('register-view');
-            break;
-        case 'admin':
-            if (user && user.role === 'admin') {
-                showView('admin-view');
-                initializeAdmin();
-            } else {
-                setRoute('chat');
-            }
-            break;
-        case 'chat':
-            if (user) {
-                showView('chat-view');
-                initializeChat();
-            } else {
-                setRoute('login');
-            }
-            break;
-        default:
-            setRoute('chat');
-    }
-}
-
-// Authentication
-async function initializeAuth() {
-    try {
-        const user = await checkAuth();
+    async function initializeAuth() {
+        const user = getCurrentUser();
         updateUserDisplay(user);
 
         if (user) {
@@ -277,640 +583,109 @@ async function initializeAuth() {
         } else {
             setRoute('login');
         }
-    } catch (error) {
-        console.warn('Auth check failed:', error);
-        updateUserDisplay(null);
-        setRoute('login');
     }
-}
 
-function updateUserDisplay(user) {
-    const userDisplay = document.getElementById('user-display');
-    if (user) {
-        userDisplay.textContent = user.username;
-        // Show admin link if user is admin
-        const adminLink = document.getElementById('admin-link');
-        if (user.role === 'admin') {
-            adminLink.classList.remove('hidden');
-        } else {
-            adminLink.classList.add('hidden');
-        }
-    } else {
-        userDisplay.textContent = '';
-        document.getElementById('admin-link').classList.add('hidden');
-    }
-}
-
-// Backend URL setting removed from UI
-
-// Chat initialization
-async function initializeChat() {
-    try {
-        await loadProviders();
-        await loadConversations();
-        updateSendButtonState();
-
-        // Always ensure we have an active conversation
-        let conversationReady = false;
-
-        // Try to restore saved conversation
-        const savedConversationId = getCurrentConversationId();
-        if (savedConversationId) {
-            try {
-                // Don't show error on fail - we'll create a new conversation instead
-                await selectConversation(savedConversationId, false);
-                conversationReady = true;
-            } catch (error) {
-                // Clear stale conversation ID and create new one
-                console.warn('Saved conversation not found, clearing and creating new one');
-                setCurrentConversationId(null);
-                currentConversationId = null;
-            }
-        }
-
-        // If no conversation yet, create one
-        if (!conversationReady) {
-            console.log('Creating new conversation...');
-            await createNewConversationUI();
-        }
-
-        // Final check - ensure we have a conversation
-        if (!currentConversationId) {
-            console.error('Failed to establish conversation, retrying...');
-            await createNewConversationUI();
-        }
-
-        console.log('Chat initialized with conversation:', currentConversationId);
-    } catch (error) {
-        showError('Failed to initialize chat: ' + error.message);
-        // Last resort - try to create a conversation anyway
-        try {
-            setCurrentConversationId(null);
-            currentConversationId = null;
-            await createNewConversationUI();
-        } catch (e) {
-            console.error('Could not create fallback conversation:', e);
-        }
-    }
-}
-
-// Admin initialization
-async function initializeAdmin() {
-    try {
-        await loadAdminData();
-    } catch (error) {
-        showError('Failed to initialize admin panel: ' + error.message);
-    }
-}
-
-async function loadProviders() {
-    try {
-        const providers = await getProviders();
-        renderProviders(providers);
-        // Auto-select provider if none selected
-        autoSelectProvider(providers);
-    } catch (error) {
-        console.error('Failed to load providers:', error);
-    }
-}
-
-async function loadConversations(query = '') {
-    try {
-        const conversations = await getConversations(query);
-        renderConversations(conversations);
-    } catch (error) {
-        console.error('Failed to load conversations:', error);
-    }
-}
-
-// Conversation management
-async function createNewConversationUI() {
-    try {
-        const conversation = await createConversation();
-        currentConversationId = conversation.id;
-        state.activeThreadId = conversation.id;
-        setCurrentConversationId(conversation.id);
-        renderTranscript([]);
-        updateStatusLine('Ready');
-        // Refresh conversation list to show the new one
-        await loadConversations();
-        console.log('Created new conversation:', conversation.id);
-    } catch (error) {
-        showError('Failed to create conversation: ' + error.message);
-        throw error; // Re-throw so callers know it failed
-    }
-}
-
-async function selectConversation(conversationId, showErrorOnFail = true) {
-    try {
-        const messages = await getConversationMessages(conversationId);
-        currentConversationId = conversationId;
-        setCurrentConversationId(conversationId);
-        state.activeThreadId = conversationId;
-        renderTranscript(messages);
-        updateStatusLine('Ready');
-    } catch (error) {
-        if (showErrorOnFail) {
-            showError('Failed to load conversation: ' + error.message);
-        }
-        throw error; // Re-throw so callers can handle (e.g., create new conversation)
-    }
-}
-
-async function renameConversation(conversationId, currentTitle) {
-    const newTitle = prompt('Enter new title:', currentTitle || '');
-    if (newTitle !== null && newTitle.trim() !== '') {
-        try {
-            await updateConversation(conversationId, newTitle.trim());
-            await loadConversations();
-        } catch (error) {
-            showError('Failed to rename conversation: ' + error.message);
-        }
-    }
-}
-
-async function deleteConversationUI(conversationId) {
-    if (confirm('Are you sure you want to delete this conversation?')) {
-        try {
-            await deleteConversation(conversationId); // Calls API function from api.js
-            if (currentConversationId === conversationId) {
-                await createNewConversationUI();
-            }
-            await loadConversations();
-        } catch (error) {
-            showError('Failed to delete conversation: ' + error.message);
-        }
-    }
-}
-
-// Provider/Model handling moved to bindUI()
-function updateSendButtonState() {
-    const providerId = getSelectedProvider();
-    const modelId = getSelectedModel();
-    const sendBtn = el('send-btn');
-    if (sendBtn) sendBtn.disabled = !providerId || !modelId || !currentConversationId || state.stream.status === 'streaming';
-}
-
-function autoSelectProvider(providers) {
-    let selectedProvider = getSelectedProvider();
-    if (!selectedProvider) {
-        // Prefer LM Studio if available
-        const lmStudio = providers.find(p => p.name.toLowerCase().includes('lm studio') || p.provider_id.toLowerCase().includes('lmstudio'));
-        if (lmStudio) {
-            selectedProvider = lmStudio.provider_id;
-        } else if (providers.length > 0) {
-            selectedProvider = providers[0].provider_id;
-        }
-        if (selectedProvider) {
-            setSelectedProvider(selectedProvider);
-            const select = el('provider-select');
-            if (select) select.value = selectedProvider;
-            // Trigger change to load models
-            select.dispatchEvent(new Event('change'));
-        }
-    }
-}
-
-// Settings drawer open/close
-on('settings-btn', 'click', () => {
-    const drawer = el('settingsDrawer');
-    if (drawer) {
-        drawer.classList.remove('hidden');
-        loadSettingsUI();
-    }
-});
-
-on('close-settings-btn', 'click', () => {
-    const drawer = el('settingsDrawer');
-    if (drawer) drawer.classList.add('hidden');
-});
-
-// Load current settings into UI
-function loadSettingsUI() {
-    // Appearance
-    const themeEl = el('setting-theme');
-    const fontSizeEl = el('setting-font-size');
-    const layoutEl = el('setting-layout');
-    if (themeEl) themeEl.value = getSetting('theme');
-    if (fontSizeEl) fontSizeEl.value = getSetting('fontSize');
-    if (layoutEl) layoutEl.value = getSetting('layout');
-
-    // Chat Behavior
-    const autoScrollEl = el('setting-auto-scroll');
-    const enterSendEl = el('setting-enter-send');
-    const timestampsEl = el('setting-timestamps');
-    const streamEl = el('setting-stream-response');
-    if (autoScrollEl) autoScrollEl.checked = getSetting('autoScroll');
-    if (enterSendEl) enterSendEl.checked = getSetting('enterToSend');
-    if (timestampsEl) timestampsEl.checked = getSetting('showTimestamps');
-    if (streamEl) streamEl.checked = getSetting('streamResponse');
-
-    // Generation Settings
-    const temperatureEl = el('setting-temperature');
-    const topPEl = el('setting-top-p');
-    const maxTokensEl = el('setting-max-tokens');
-    if (temperatureEl) temperatureEl.value = state.run.temperature ?? '';
-    if (topPEl) topPEl.value = state.run.top_p ?? '';
-    if (maxTokensEl) maxTokensEl.value = state.run.max_tokens ?? '';
-
-    // Provider Defaults
-    const rememberProviderEl = el('setting-remember-provider');
-    const rememberModelEl = el('setting-remember-model');
-    if (rememberProviderEl) rememberProviderEl.checked = getSetting('rememberProvider');
-    if (rememberModelEl) rememberModelEl.checked = getSetting('rememberModel');
-}
-
-// Settings change handlers - Appearance
-on('setting-theme', 'change', (e) => setSetting('theme', e.target.value));
-on('setting-font-size', 'change', (e) => setSetting('fontSize', e.target.value));
-on('setting-layout', 'change', (e) => setSetting('layout', e.target.value));
-
-// Settings change handlers - Chat Behavior
-on('setting-auto-scroll', 'change', (e) => setSetting('autoScroll', e.target.checked));
-on('setting-enter-send', 'change', (e) => setSetting('enterToSend', e.target.checked));
-on('setting-timestamps', 'change', (e) => setSetting('showTimestamps', e.target.checked));
-on('setting-stream-response', 'change', (e) => setSetting('streamResponse', e.target.checked));
-
-// Settings change handlers - Generation Settings
-on('setting-temperature', 'input', (e) => {
-    const val = e.target.value.trim();
-    state.run.temperature = val === '' ? null : parseFloat(val);
-    renderTopbar();
-});
-on('setting-top-p', 'input', (e) => {
-    const val = e.target.value.trim();
-    state.run.top_p = val === '' ? null : parseFloat(val);
-    renderTopbar();
-});
-on('setting-max-tokens', 'input', (e) => {
-    const val = e.target.value.trim();
-    state.run.max_tokens = val === '' ? null : parseInt(val, 10);
-    renderTopbar();
-});
-
-// Settings change handlers - Provider Defaults
-on('setting-remember-provider', 'change', (e) => setSetting('rememberProvider', e.target.checked));
-on('setting-remember-model', 'change', (e) => setSetting('rememberModel', e.target.checked));
-
-// Reset generation settings
-on('reset-generation-settings-btn', 'click', () => {
-    state.run.temperature = null;
-    state.run.top_p = null;
-    state.run.max_tokens = null;
-    loadSettingsUI(); // Reload UI to reflect changes
-    renderTopbar();
-});
-
-// Data actions
-on('clear-history-btn', 'click', async () => {
-    if (confirm('Are you sure you want to clear all conversation history? This cannot be undone.')) {
-        // TODO: Implement clear history via API
-        showError('Clear history not yet implemented');
-    }
-});
-
-on('export-data-btn', 'click', () => {
-    // Export settings and conversation data as JSON
-    const data = {
-        settings: getAllSettings(),
-        exportedAt: new Date().toISOString(),
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `omniai-settings-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-});
-
-// Message sending
-on('send-btn', 'click', () => {
-    debugLog('SEND_CLICK');
-    sendMessage().catch(error => {
-        debugLog('SEND_ERROR', { error: error.message });
-        console.error('Send error:', error);
-    });
-});
-on('message-input', 'keydown', (e) => {
-    // Respect enterToSend setting
-    if (e.key === 'Enter' && !e.shiftKey && getSetting('enterToSend')) {
+    async function handleLoginSubmit(e) {
         e.preventDefault();
-        sendMessage();
-    } else if (e.key === 'Escape') {
-        cancelStreaming();
-    }
-});
+        const username = $('username')?.value;
+        const password = $('password')?.value;
 
-async function sendMessage() {
-    if (!currentConversationId) return;
-
-    const messageInput = document.getElementById('message-input');
-    const content = messageInput.value.trim();
-    if (!content) return;
-
-    const providerId = getSelectedProvider();
-    const modelId = getSelectedModel();
-
-    if (!providerId || !modelId) {
-        showError('Please select a provider and model first.');
-        return;
-    }
-
-    try {
-        disableSendButton();
-        clearMessageInput();
-
-        // Add user message to transcript (visual update)
-        const transcript = document.getElementById('transcript');
-        const userDiv = document.createElement('div');
-        userDiv.className = 'message user';
-        userDiv.innerHTML = content.replace(/\n/g, '<br>');
-        transcript.appendChild(userDiv);
-
-        // First, append the user message to the conversation via API
-        await appendMessage(currentConversationId, content);
-
-        // Add empty assistant message placeholder for streaming
-        const assistantDiv = document.createElement('div');
-        assistantDiv.className = 'message assistant streaming';
-        assistantDiv.textContent = '...';
-        transcript.appendChild(assistantDiv);
-        transcript.scrollTop = transcript.scrollHeight;
-
-        // Start streaming (now the message is in the conversation)
-        await startStreaming(providerId, modelId);
-
-    } catch (error) {
-        showError('Failed to send message: ' + error.message);
-        enableSendButton();
-    }
-}
-
-async function startStreaming(providerId, modelId) {
-    if (currentStreamingParser) {
-        currentStreamingParser.stop();
-    }
-
-    streamingStartTime = Date.now();
-    updateStatusLine('Streaming...');
-
-    try {
-        // Model tuning is handled by LM Studio - we just specify provider/model
-        currentStreamingParser = await streamChat(
-            currentConversationId,
-            providerId,
-            modelId,
-            handleStreamEvent,
-            handleStreamError,
-            handleStreamDisconnect
-        );
-        showCancelButton();
-    } catch (error) {
-        handleStreamError(error);
-    }
-}
-
-function handleStreamEvent(event) {
-    switch (event.type) {
-        case 'delta':
-            appendToLastMessage(event.content);
-            break;
-        case 'usage':
-            updateStatusLine('Streaming...', null, event.usage);
-            break;
-        case 'done':
-            finalizeStreaming();
-            break;
-        case 'generation_id':
-            currentGenerationId = event.generation_id;
-            break;
-        default:
-            console.warn('Unknown stream event:', event);
-    }
-}
-
-function handleStreamError(error) {
-    console.error('Stream error:', error);
-    showError('Streaming error: ' + error.message);
-    finalizeStreaming();
-}
-
-function handleStreamDisconnect() {
-    showDisconnectBanner();
-    finalizeStreaming();
-}
-
-function finalizeStreaming() {
-    if (currentStreamingParser) {
-        currentStreamingParser.stop();
-        currentStreamingParser = null;
-    }
-
-    finalizeLastMessage();
-    const elapsed = streamingStartTime ? (Date.now() - streamingStartTime) / 1000 : null;
-    updateStatusLine('Ready', elapsed);
-    enableSendButton();
-    showRetryButton();
-    currentGenerationId = null;
-    streamingStartTime = null;
-    hideDisconnectBanner();
-}
-
-function cancelStreaming() {
-    if (currentStreamingParser && currentGenerationId) {
-        cancelGeneration(currentGenerationId).catch(error => {
-            console.warn('Failed to cancel generation:', error);
-        });
-        currentStreamingParser.stop();
-        finalizeStreaming();
-        updateStatusLine('Canceled');
-        showRetryButton();
-    }
-}
-
-on('cancel-btn', 'click', cancelStreaming);
-
-on('retry-btn', 'click', async () => {
-    if (!currentConversationId) return;
-
-    try {
-        await retryLastMessage(currentConversationId);
-        // Refresh conversation to get updated messages
-        await selectConversation(currentConversationId);
-    } catch (error) {
-        showError('Failed to retry: ' + error.message);
-    }
-});
-
-// Other UI
-on('sidebar-toggle', 'click', () => {
-    const sidebar = document.getElementById('sidebar');
-    sidebar.classList.toggle('open');
-});
-
-on('new-conversation-btn', 'click', () => {
-    debugLog('NEW_CHAT_CLICK');
-    createNewConversationUI().catch(error => {
-        debugLog('NEW_CHAT_ERROR', { error: error.message });
-        console.error('New chat error:', error);
-        showError('Failed to create new conversation: ' + error.message);
-    });
-});
-
-on('search-conversations', 'input', (e) => {
-    loadConversations(e.target.value);
-});
-
-// Welcome panel suggestion chips
-document.addEventListener('click', (e) => {
-    if (e.target.classList.contains('suggestion-chip')) {
-        const message = e.target.textContent;
-        const input = document.getElementById('message-input');
-        if (input) {
-            input.value = message;
-            input.focus();
-            // Hide welcome panel
-            const welcomePanel = document.getElementById('welcome-panel');
-            if (welcomePanel) welcomePanel.classList.add('hidden');
-        }
-    }
-});
-
-on('dismiss-error', 'click', hideError);
-
-on('retry-stream', 'click', () => {
-    hideDisconnectBanner();
-    // Retry would need to be implemented based on last message
-});
-
-// Conversation actions
-on('rename-chat-btn', 'click', () => {
-    if (currentConversationId) {
-        const activeThread = state.threads.find(t => t.id === currentConversationId);
-        renameConversation(currentConversationId, activeThread?.title);
-    }
-});
-
-on('delete-chat-btn', 'click', () => {
-    if (currentConversationId) {
-        deleteConversationUI(currentConversationId);
-    }
-});
-
-// Diagnostics
-on('test-me', 'click', async () => {
-    try {
-        const result = await getMe();
-        const diagEl = el('diag-results');
-        if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
-    } catch (error) {
-        const diagEl = el('diag-results');
-        if (diagEl) diagEl.textContent = 'Error: ' + error.message;
-    }
-});
-
-on('test-providers', 'click', async () => {
-    try {
-        const result = await getProviders();
-        const diagEl = el('diag-results');
-        if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
-    } catch (error) {
-        const diagEl = el('diag-results');
-        if (diagEl) diagEl.textContent = 'Error: ' + error.message;
-    }
-});
-
-// Global error handlers - surface crashes to the user
-window.addEventListener('error', (event) => {
-    console.error('Global error:', event.error);
-    const errorDisplay = el('error-display');
-    if (errorDisplay) {
-        errorDisplay.textContent = `JavaScript Error: ${event.error?.message || 'Unknown error'}`;
-        errorDisplay.classList.remove('hidden');
-    }
-});
-
-window.addEventListener('unhandledrejection', (event) => {
-    console.error('Unhandled promise rejection:', event.reason);
-    const errorDisplay = el('error-display');
-    if (errorDisplay) {
-        errorDisplay.textContent = `Promise Error: ${event.reason?.message || 'Unknown promise error'}`;
-        errorDisplay.classList.remove('hidden');
-    }
-});
-
-// Single-init guard for UI bindings
-function bindUI() {
-    if (window.__omniBound) return;
-    window.__omniBound = true;
-
-    // Authentication
-    on('login-form', 'submit', async (e) => {
-        e.preventDefault();
-        const username = el('username')?.value;
-        const password = el('password')?.value;
+        if (!username || !password) return;
 
         try {
             await handleLogin(username, password);
             updateUserDisplay(getCurrentUser());
             setRoute('chat');
         } catch (error) {
-            const errorEl = el('login-error');
+            const errorEl = $('login-error');
             if (errorEl) {
                 errorEl.textContent = error.message;
                 errorEl.classList.remove('hidden');
             }
         }
-    });
+    }
 
-    on('register-form', 'submit', async (e) => {
+    async function handleRegisterSubmit(e) {
         e.preventDefault();
-        const inviteCode = el('invite-code')?.value;
-        const username = el('reg-username')?.value;
-        const password = el('reg-password')?.value;
+        const inviteCode = $('invite-code')?.value;
+        const username = $('reg-username')?.value;
+        const password = $('reg-password')?.value;
+
+        if (!inviteCode || !username || !password) return;
 
         try {
             await handleRegister(inviteCode, username, password);
             updateUserDisplay(getCurrentUser());
             setRoute('chat');
         } catch (error) {
-            const errorEl = el('register-error');
+            const errorEl = $('register-error');
             if (errorEl) {
                 errorEl.textContent = error.message;
                 errorEl.classList.remove('hidden');
             }
         }
-    });
+    }
 
-    on('show-register', 'click', (e) => {
-        e.preventDefault();
-        setRoute('register');
-    });
-
-    on('show-login', 'click', (e) => {
-        e.preventDefault();
-        setRoute('login');
-    });
-
-    on('logout-btn', 'click', async () => {
+    async function handleLogoutClick() {
         await handleLogout();
+        updateUserDisplay(null);
         setRoute('login');
-    });
+    }
 
-    // Provider/Model handling
-    on('provider-select', 'change', async (e) => {
+    // ============================================
+    // CHAT INITIALIZATION
+    // ============================================
+
+    async function initializeChat() {
+        try {
+            updateConnectionStatus('connecting');
+            await loadProviders();
+            await loadConversations();
+            syncDrawerSettings();
+            updateApiBaseUrlInput();
+            updateComposerState();
+            updateConnectionStatus('online');
+
+            const savedConversationId = getCurrentConversationId();
+            if (savedConversationId) {
+                try {
+                    await selectConversation(savedConversationId);
+                } catch (error) {
+                    console.warn('Saved conversation not found, creating new one');
+                    await createNewConversation();
+                }
+            } else {
+                await createNewConversation();
+            }
+        } catch (error) {
+            updateConnectionStatus('offline');
+            showError('Failed to initialize chat: ' + error.message);
+        }
+    }
+
+    // ============================================
+    // PROVIDERS & MODELS
+    // ============================================
+
+    async function loadProviders() {
+        try {
+            const providers = await getProviders();
+            renderProviders(providers);
+        } catch (error) {
+            console.error('Failed to load providers:', error);
+        }
+    }
+
+    async function handleProviderChange(e) {
         const providerId = e.target.value;
         setSelectedProvider(providerId);
-        // Clear model selection when provider changes
         setSelectedModel('');
-        updateSendButtonState();
+        updateComposerState();
 
         if (providerId) {
             try {
                 const models = await getProviderModels(providerId);
                 renderModels(models);
-                updateSendButtonState();
             } catch (error) {
                 showError('Failed to load models: ' + error.message);
                 renderModels([]);
@@ -918,201 +693,512 @@ function bindUI() {
         } else {
             renderModels([]);
         }
-    });
+    }
 
-    on('model-select', 'change', (e) => {
+    function handleModelChange(e) {
         setSelectedModel(e.target.value);
-        updateSendButtonState();
-    });
+        updateComposerState();
+    }
 
-    // Settings drawer open/close
-    on('settings-btn', 'click', () => {
-        const drawer = el('settingsDrawer');
-        if (drawer) {
-            drawer.classList.remove('hidden');
-            loadSettingsUI();
+    // ============================================
+    // CONVERSATIONS
+    // ============================================
+
+    async function loadConversations(query = '') {
+        try {
+            const conversations = await getConversations(query);
+            state.threads = conversations;
+            renderConversations(conversations);
+        } catch (error) {
+            console.error('Failed to load conversations:', error);
         }
-    });
+    }
 
-    on('close-settings-btn', 'click', () => {
-        const drawer = el('settingsDrawer');
-        if (drawer) drawer.classList.add('hidden');
-    });
-
-    // Settings change handlers - Appearance
-    on('setting-theme', 'change', (e) => setSetting('theme', e.target.value));
-    on('setting-font-size', 'change', (e) => setSetting('fontSize', e.target.value));
-    on('setting-layout', 'change', (e) => setSetting('layout', e.target.value));
-
-    // Settings change handlers - Chat Behavior
-    on('setting-auto-scroll', 'change', (e) => setSetting('autoScroll', e.target.checked));
-    on('setting-enter-send', 'change', (e) => setSetting('enterToSend', e.target.checked));
-    on('setting-timestamps', 'change', (e) => setSetting('showTimestamps', e.target.checked));
-    on('setting-stream-response', 'change', (e) => setSetting('streamResponse', e.target.checked));
-
-    // Settings change handlers - Generation Settings
-    on('setting-temperature', 'input', (e) => {
-        const val = e.target.value.trim();
-        state.run.temperature = val === '' ? null : parseFloat(val);
-        renderTopbar();
-    });
-    on('setting-top-p', 'input', (e) => {
-        const val = e.target.value.trim();
-        state.run.top_p = val === '' ? null : parseFloat(val);
-        renderTopbar();
-    });
-    on('setting-max-tokens', 'input', (e) => {
-        const val = e.target.value.trim();
-        state.run.max_tokens = val === '' ? null : parseInt(val, 10);
-        renderTopbar();
-    });
-
-    // Settings change handlers - Provider Defaults
-    on('setting-remember-provider', 'change', (e) => setSetting('rememberProvider', e.target.checked));
-    on('setting-remember-model', 'change', (e) => setSetting('rememberModel', e.target.checked));
-
-    // Reset generation settings
-    on('reset-generation-settings-btn', 'click', () => {
-        state.run.temperature = null;
-        state.run.top_p = null;
-        state.run.max_tokens = null;
-        loadSettingsUI(); // Reload UI to reflect changes
-        renderTopbar();
-    });
-
-    // Data actions
-    on('clear-history-btn', 'click', async () => {
-        if (confirm('Are you sure you want to clear all conversation history? This cannot be undone.')) {
-            // TODO: Implement clear history via API
-            showError('Clear history not yet implemented');
+    async function createNewConversation() {
+        try {
+            const conversation = await createConversation();
+            currentConversationId = conversation.id;
+            setCurrentConversationId(conversation.id);
+            state.activeThreadId = conversation.id;
+            renderTranscriptMessages([]);
+            updateChatTitle('New Chat');
+            updateStatusLine('Ready');
+            await loadConversations();
+        } catch (error) {
+            showError('Failed to create conversation: ' + error.message);
         }
-    });
+    }
 
-    on('export-data-btn', 'click', () => {
-        // Export settings and conversation data as JSON
-        const data = {
-            settings: getAllSettings(),
-            exportedAt: new Date().toISOString(),
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `omniai-settings-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
+    async function selectConversation(conversationId) {
+        try {
+            const messages = await getConversationMessages(conversationId);
+            currentConversationId = conversationId;
+            state.activeThreadId = conversationId;
+            setCurrentConversationId(conversationId);
+            renderTranscriptMessages(messages);
 
-    // Message sending
-    on('send-btn', 'click', () => {
-        debugLog('SEND_CLICK', { currentConversationId, providerId: getSelectedProvider(), modelId: getSelectedModel() });
-        if (!currentConversationId) {
-            showError('No conversation. Click New Chat first.');
+            // Find and set title
+            const conversation = state.threads.find(t => t.id === conversationId);
+            updateChatTitle(conversation?.title || 'Chat');
+            updateStatusLine('Ready');
+
+            // Update sidebar selection
+            highlightActiveConversation(conversationId);
+
+            // Close sidebar on mobile
+            if (window.innerWidth <= 768) {
+                closeSidebar();
+            }
+        } catch (error) {
+            showError('Failed to load conversation: ' + error.message);
+            throw error;
+        }
+    }
+
+    function highlightActiveConversation(conversationId) {
+        const list = $('conversations-list');
+        if (!list) return;
+
+        list.querySelectorAll('li').forEach(li => {
+            li.classList.toggle('active', li.dataset.id === String(conversationId));
+        });
+    }
+
+    async function renameCurrentConversation() {
+        if (!currentConversationId) return;
+
+        const conversation = state.threads.find(t => t.id === currentConversationId);
+        const currentTitle = conversation?.title || '';
+        const newTitle = prompt('Enter new title:', currentTitle);
+
+        if (newTitle !== null && newTitle.trim() !== '') {
+            try {
+                await updateConversation(currentConversationId, newTitle.trim());
+                updateChatTitle(newTitle.trim());
+                await loadConversations();
+            } catch (error) {
+                showError('Failed to rename conversation: ' + error.message);
+            }
+        }
+    }
+
+    async function deleteCurrentConversation() {
+        if (!currentConversationId) return;
+
+        if (confirm('Are you sure you want to delete this conversation?')) {
+            try {
+                await deleteConversation(currentConversationId);
+                await createNewConversation();
+                await loadConversations();
+            } catch (error) {
+                showError('Failed to delete conversation: ' + error.message);
+            }
+        }
+    }
+
+    // ============================================
+    // MESSAGE SENDING
+    // ============================================
+
+    async function sendMessage() {
+        if (!currentConversationId) return;
+
+        const messageInput = $('message-input');
+        const content = messageInput?.value.trim();
+        if (!content) return;
+
+        const providerId = getSelectedProvider();
+        const modelId = getSelectedModel();
+
+        if (!providerId || !modelId) {
+            showError('Please select a provider and model first.');
             return;
         }
-        sendMessage().catch(error => {
-            debugLog('SEND_ERROR', { error: error.message });
-            console.error('Send error:', error);
+
+        try {
+            // Update UI state
+            state.stream.status = 'streaming';
+            updateComposerState();
+            clearMessageInput();
+
+            // Add user message
+            addMessageToTranscript('user', content);
+
+            // Add placeholder for assistant message
+            addMessageToTranscript('assistant', '', true);
+
+            // Start streaming
+            await startStreaming(content, providerId, modelId);
+
+        } catch (error) {
             showError('Failed to send message: ' + error.message);
-        });
-    });
-    on('message-input', 'keydown', (e) => {
-        // Respect enterToSend setting
-        if (e.key === 'Enter' && !e.shiftKey && getSetting('enterToSend')) {
+            state.stream.status = 'error';
+            updateComposerState();
+        }
+    }
+
+    async function startStreaming(content, providerId, modelId) {
+        if (currentStreamingParser) {
+            currentStreamingParser.stop();
+        }
+
+        const settings = getGenerationSettings();
+        streamingStartTime = Date.now();
+        updateStatusLine('Streaming...');
+
+        try {
+            currentStreamingParser = await streamChat(
+                currentConversationId,
+                providerId,
+                modelId,
+                settings,
+                handleStreamEvent,
+                handleStreamError,
+                handleStreamDisconnect
+            );
+        } catch (error) {
+            handleStreamError(error);
+        }
+    }
+
+    function handleStreamEvent(event) {
+        switch (event.type) {
+            case 'delta':
+                appendToLastMessage(event.content);
+                break;
+            case 'usage':
+                const elapsed = streamingStartTime ? (Date.now() - streamingStartTime) / 1000 : null;
+                updateStatusLine('Streaming...', elapsed, event.usage);
+                break;
+            case 'done':
+                finalizeStreaming();
+                break;
+            case 'generation_id':
+                currentGenerationId = event.generation_id;
+                break;
+            default:
+                console.warn('Unknown stream event:', event);
+        }
+    }
+
+    function handleStreamError(error) {
+        console.error('Stream error:', error);
+        showError('Streaming error: ' + error.message);
+        state.stream.status = 'error';
+        state.stream.lastError = error;
+        finalizeStreaming();
+    }
+
+    function handleStreamDisconnect() {
+        showDisconnectBanner();
+        finalizeStreaming();
+    }
+
+    function finalizeStreaming() {
+        if (currentStreamingParser) {
+            currentStreamingParser.stop();
+            currentStreamingParser = null;
+        }
+
+        finalizeLastMessage();
+        const elapsed = streamingStartTime ? (Date.now() - streamingStartTime) / 1000 : null;
+        updateStatusLine('Ready', elapsed);
+
+        state.stream.status = 'idle';
+        updateComposerState();
+
+        currentGenerationId = null;
+        streamingStartTime = null;
+        hideDisconnectBanner();
+    }
+
+    function cancelStreaming() {
+        if (currentStreamingParser && currentGenerationId) {
+            cancelGeneration(currentGenerationId).catch(error => {
+                console.warn('Failed to cancel generation:', error);
+            });
+            currentStreamingParser.stop();
+        }
+
+        state.stream.status = 'cancelled';
+        finalizeStreaming();
+        updateStatusLine('Cancelled');
+    }
+
+    // ============================================
+    // SETTINGS HANDLERS
+    // ============================================
+
+    function handleDrawerTemperatureChange(e) {
+        const value = parseFloat(e.target.value);
+        setTemperature(value);
+
+        // Sync both inputs
+        const numInput = $('drawer-temperature');
+        const rangeInput = $('drawer-temperature-range');
+        if (numInput && e.target !== numInput) numInput.value = value;
+        if (rangeInput && e.target !== rangeInput) rangeInput.value = value;
+    }
+
+    function handleDrawerTopPChange(e) {
+        const value = parseFloat(e.target.value);
+        setTopP(value);
+
+        // Sync both inputs
+        const numInput = $('drawer-top-p');
+        const rangeInput = $('drawer-top-p-range');
+        if (numInput && e.target !== numInput) numInput.value = value;
+        if (rangeInput && e.target !== rangeInput) rangeInput.value = value;
+    }
+
+    function handleDrawerMaxTokensChange(e) {
+        const value = e.target.value ? parseInt(e.target.value, 10) : null;
+        setMaxTokens(value);
+    }
+
+    function handleQuickTemperatureChange(e) {
+        const value = parseFloat(e.target.value);
+        setTemperature(value);
+        const display = $('temp-display');
+        if (display) display.textContent = value.toFixed(1);
+    }
+
+    function handleQuickTopPChange(e) {
+        const value = parseFloat(e.target.value);
+        setTopP(value);
+        const display = $('top-p-display');
+        if (display) display.textContent = value.toFixed(2);
+    }
+
+    function handleQuickMaxTokensChange(e) {
+        const value = e.target.value ? parseInt(e.target.value, 10) : null;
+        setMaxTokens(value);
+    }
+
+    function handleSaveUrlClick() {
+        const input = $('api-base-url');
+        const url = input?.value.trim();
+        if (url) {
+            setApiBaseUrl(url);
+            showSuccess('API Base URL saved. Refresh to apply.');
+        }
+    }
+
+    // ============================================
+    // KEYBOARD HANDLERS
+    // ============================================
+
+    function handleMessageInputKeydown(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
         } else if (e.key === 'Escape') {
-            cancelStreaming();
+            if (state.stream.status === 'streaming') {
+                cancelStreaming();
+            }
         }
-    });
+    }
 
-    on('cancel-btn', 'click', cancelStreaming);
-
-    on('retry-btn', 'click', async () => {
-        if (!currentConversationId) return;
-
-        try {
-            await retryLastMessage(currentConversationId);
-            // Refresh conversation to get updated messages
-            await selectConversation(currentConversationId);
-        } catch (error) {
-            showError('Failed to retry: ' + error.message);
+    function handleGlobalKeydown(e) {
+        // Cmd/Ctrl + K for command palette
+        if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+            e.preventDefault();
+            // Command palette is handled by command-palette.js
         }
-    });
 
-    // Other UI
-    on('sidebar-toggle', 'click', () => {
-        const sidebar = document.getElementById('sidebar');
-        sidebar.classList.toggle('open');
-    });
-
-    on('new-conversation-btn', 'click', () => {
-        debugLog('NEW_CHAT_CLICK');
-        createNewConversationUI().catch(error => {
-            debugLog('NEW_CHAT_ERROR', { error: error.message });
-            console.error('New chat error:', error);
-            showError('Failed to create new conversation: ' + error.message);
-        });
-    });
-
-    on('search-conversations', 'input', (e) => {
-        loadConversations(e.target.value);
-    });
-
-    on('dismiss-error', 'click', hideError);
-
-    on('retry-stream', 'click', () => {
-        hideDisconnectBanner();
-        // Retry would need to be implemented based on last message
-    });
-
-    // Conversation actions
-    on('rename-chat-btn', 'click', () => {
-        if (currentConversationId) {
-            const activeThread = state.threads.find(t => t.id === currentConversationId);
-            renameConversation(currentConversationId, activeThread?.title);
+        // Escape to close modals/drawers
+        if (e.key === 'Escape') {
+            if (settingsDrawerOpen) {
+                closeSettingsDrawer();
+            } else if (controlsPanelOpen) {
+                closeControlsPanel();
+            } else if (sidebarOpen && window.innerWidth <= 768) {
+                closeSidebar();
+            }
         }
-    });
+    }
 
-    on('delete-chat-btn', 'click', () => {
-        if (currentConversationId) {
-            deleteConversationUI(currentConversationId);
-        }
-    });
+    // ============================================
+    // EVENT BINDING
+    // ============================================
 
-    // Diagnostics
-    on('test-me', 'click', async () => {
-        try {
-            const result = await getMe();
-            const diagEl = el('diag-results');
-            if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
-        } catch (error) {
-            const diagEl = el('diag-results');
-            if (diagEl) diagEl.textContent = 'Error: ' + error.message;
-        }
-    });
-
-    on('test-providers', 'click', async () => {
-        try {
-            const result = await getProviders();
-            const diagEl = el('diag-results');
-            if (diagEl) diagEl.textContent = JSON.stringify(result, null, 2);
-        } catch (error) {
-            const diagEl = el('diag-results');
-            if (diagEl) diagEl.textContent = 'Error: ' + error.message;
-        }
-    });
-}
-
-// Initialize app
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        bindUI();
+    function bindEvents() {
+        // Route changes
         window.addEventListener('hashchange', handleRouteChange);
+
+        // Global keyboard
+        document.addEventListener('keydown', handleGlobalKeydown);
+
+        // Auth forms
+        bindEvent('login-form', 'submit', handleLoginSubmit);
+        bindEvent('register-form', 'submit', handleRegisterSubmit);
+        bindClick('show-register', (e) => { e.preventDefault(); setRoute('register'); });
+        bindClick('show-login', (e) => { e.preventDefault(); setRoute('login'); });
+        bindClick('logout-btn', handleLogoutClick);
+        bindClick('sidebar-logout-btn', handleLogoutClick);
+        bindClick('admin-logout-btn', handleLogoutClick);
+
+        // Sidebar
+        bindClick('sidebar-toggle', () => toggleSidebar());
+        bindClick('sidebar-backdrop', closeSidebar);
+        bindClick('new-conversation-btn', createNewConversation);
+        bindEvent('search-conversations', 'input', (e) => loadConversations(e.target.value));
+
+        // Settings
+        bindClick('settings-toggle-btn', () => toggleSettingsDrawer());
+        bindClick('close-settings-btn', closeSettingsDrawer);
+        bindClick('controls-btn', () => toggleControlsPanel());
+
+        // Chat actions
+        bindClick('rename-chat-btn', renameCurrentConversation);
+        bindClick('delete-chat-btn', deleteCurrentConversation);
+
+        // Composer
+        bindClick('send-btn', sendMessage);
+        bindClick('cancel-btn', cancelStreaming);
+        bindEvent('message-input', 'keydown', handleMessageInputKeydown);
+        bindEvent('message-input', 'input', (e) => {
+            autoResizeTextarea(e.target);
+            updateComposerState();
+        });
+
+        // Jump to latest
+        bindClick('jump-to-latest', () => {
+            const transcript = $('transcript');
+            if (transcript) {
+                scrollToBottom(transcript);
+                userScrolledUp = false;
+                hideJumpToLatest();
+            }
+        });
+
+        // Transcript scroll
+        bindEvent('transcript', 'scroll', handleTranscriptScroll);
+
+        // Provider/Model
+        bindEvent('provider-select', 'change', handleProviderChange);
+        bindEvent('model-select', 'change', handleModelChange);
+
+        // Drawer settings
+        bindEvent('drawer-temperature', 'input', handleDrawerTemperatureChange);
+        bindEvent('drawer-temperature-range', 'input', handleDrawerTemperatureChange);
+        bindEvent('drawer-top-p', 'input', handleDrawerTopPChange);
+        bindEvent('drawer-top-p-range', 'input', handleDrawerTopPChange);
+        bindEvent('drawer-max-tokens', 'input', handleDrawerMaxTokensChange);
+
+        // Quick controls
+        bindEvent('quick-temperature', 'input', handleQuickTemperatureChange);
+        bindEvent('quick-top-p', 'input', handleQuickTopPChange);
+        bindEvent('quick-max-tokens', 'input', handleQuickMaxTokensChange);
+
+        // Backend URL
+        bindClick('save-url-btn', handleSaveUrlClick);
+
+        // Banners
+        bindClick('dismiss-error', hideErrorBanner);
+        bindClick('retry-stream', () => {
+            hideDisconnectBanner();
+            // Could implement retry logic here
+        });
+
+        // Click outside to close panels
+        document.addEventListener('click', (e) => {
+            const controlsPanel = $('controls-panel');
+            const controlsBtn = $('controls-btn');
+
+            if (controlsPanelOpen && controlsPanel && controlsBtn) {
+                if (!controlsPanel.contains(e.target) && !controlsBtn.contains(e.target)) {
+                    closeControlsPanel();
+                }
+            }
+        });
+
+        // Suggestion buttons
+        document.querySelectorAll('.suggestion-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const prompt = btn.dataset.prompt;
+                const messageInput = $('message-input');
+                if (messageInput && prompt) {
+                    messageInput.value = prompt;
+                    messageInput.focus();
+                    autoResizeTextarea(messageInput);
+                    updateComposerState();
+                }
+            });
+        });
+
+        // Diagnostics (if present)
+        bindClick('test-me', async () => {
+            try {
+                const result = await getMe();
+                const results = $('diag-results');
+                if (results) results.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                const results = $('diag-results');
+                if (results) results.textContent = 'Error: ' + error.message;
+            }
+        });
+
+        bindClick('test-providers', async () => {
+            try {
+                const result = await getProviders();
+                const results = $('diag-results');
+                if (results) results.textContent = JSON.stringify(result, null, 2);
+            } catch (error) {
+                const results = $('diag-results');
+                if (results) results.textContent = 'Error: ' + error.message;
+            }
+        });
+    }
+
+    // ============================================
+    // INITIALIZATION
+    // ============================================
+
+    async function initApp() {
+        bindEvents();
         await initializeAuth();
         handleRouteChange();
-        window.__APP_READY__ = true;
-    } catch (err) {
-        console.error('Boot failure:', err);
-        if (window.__SHOW_FATAL__) window.__SHOW_FATAL__(err?.stack || String(err));
     }
-});
+
+    // Single init on DOMContentLoaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initApp);
+    } else {
+        initApp();
+    }
+
+    // Expose necessary functions globally for other modules
+    window.selectConversation = selectConversation;
+    window.renameConversation = async function(id, title) {
+        const newTitle = prompt('Enter new title:', title || '');
+        if (newTitle !== null && newTitle.trim() !== '') {
+            try {
+                await updateConversation(id, newTitle.trim());
+                await loadConversations();
+                if (id === currentConversationId) {
+                    updateChatTitle(newTitle.trim());
+                }
+            } catch (error) {
+                showError('Failed to rename conversation: ' + error.message);
+            }
+        }
+    };
+    window.deleteConversation = async function(id) {
+        if (confirm('Are you sure you want to delete this conversation?')) {
+            try {
+                await deleteConversation(id);
+                if (id === currentConversationId) {
+                    await createNewConversation();
+                }
+                await loadConversations();
+            } catch (error) {
+                showError('Failed to delete conversation: ' + error.message);
+            }
+        }
+    };
+    window.showToast = showToast;
+    window.showError = showError;
+    window.showSuccess = showSuccess;
+
+})();
