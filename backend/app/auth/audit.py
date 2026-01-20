@@ -33,7 +33,7 @@ def write_audit(
 
     user_agent = request.headers.get("User-Agent")
 
-    from datetime import datetime
+    from datetime import datetime, timezone
     db.execute(
         text("""
             INSERT INTO audit_log (action, target, actor_user_id, ip, proxy_ip, user_agent, created_at)
@@ -46,7 +46,7 @@ def write_audit(
             "ip": ip,
             "proxy_ip": proxy_ip,
             "user_agent": user_agent,
-            "created_at": datetime.utcnow(),
+            "created_at": datetime.now(timezone.utc),
         }
     )
     # No flush needed; will be committed with the transaction

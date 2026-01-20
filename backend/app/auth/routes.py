@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 
 from backend.app.auth.audit import write_audit
 from backend.app.auth.csrf import require_csrf
@@ -43,7 +43,7 @@ def register(request: Request, body: RegisterRequest, db: Session = Depends(get_
 
     if settings.invite_only:
         invite = get_invite(db, body.invite_code)
-        if not invite or invite.used_by or invite.revoked_at or invite.expires_at < datetime.utcnow():
+        if not invite or invite.used_by or invite.revoked_at or invite.expires_at < datetime.now(timezone.utc):
             write_audit(db, None, "REGISTER_FAILED", f"invite:{body.invite_code}", request)
             db.commit()
             raise HTTPException(
@@ -97,7 +97,7 @@ def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)) -
     if user.status != "active":
         raise HTTPException(status_code=401, detail={"code": "USER_INACTIVE", "message": "Account is inactive"})
 
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     session_id, csrf_token = create_session(db, user.id, device_meta=request.headers.get("User-Agent"))
     write_audit(db, user.id, "LOGIN_SUCCESS", f"user:{user.id}", request)
 

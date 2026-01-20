@@ -24,8 +24,12 @@ async def list_provider_models(
     provider_id: str,
     user=Depends(require_active_user),
 ):
-    models = await registry.list_models(provider_id)
-    return {"models": [{"id": m.id, "label": m.label} for m in models]}
+    try:
+        models = await registry.list_models(provider_id)
+        return {"models": [{"id": m.id, "label": m.label} for m in models]}
+    except Exception:
+        # Return empty list if provider unreachable
+        return {"models": []}
 
 
 @router.get("/{provider_id}/health")

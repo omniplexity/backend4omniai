@@ -159,7 +159,11 @@ def stream_chat(
     return StreamingResponse(
         stream_chat_generator(conversation_id, req.provider_id, req.model, req.temperature, req.top_p, req.max_tokens, user, db),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+        },
     )
 
 

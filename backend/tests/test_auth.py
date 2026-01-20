@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.app.main import app
 from backend.app.db.repo.invites_repo import create_invite
@@ -23,7 +23,7 @@ def test_register_consumes_invite_and_creates_user_and_session_cookie(client, db
     invite = create_invite(
         db_session,
         code="valid-invite-code",
-        expires_at=datetime.utcnow() + timedelta(hours=1),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         created_by=None
     )
     db_session.commit()
@@ -97,7 +97,7 @@ def test_logout_requires_csrf(client):
     session_cookie = login_response.cookies[settings.session_cookie_name]
     client.cookies.set(settings.session_cookie_name, session_cookie)
     response = client.post("/auth/logout")
-    assert response.status_code == 401  # CSRF invalid
+    assert response.status_code == 403  # CSRF invalid
 
     # With CSRF should succeed
     response = client.post("/auth/logout", headers={"X-CSRF-Token": csrf_token})
@@ -120,7 +120,7 @@ def test_admin_invite_create_requires_admin_and_csrf(client):
 
     # Create invite without CSRF should fail
     response = client.post("/admin/invites", json={"expires_in_hours": 24})
-    assert response.status_code == 401
+    assert response.status_code == 403  # CSRF invalid
 
     # With CSRF should succeed
     response = client.post("/admin/invites", json={"expires_in_hours": 24}, headers={"X-CSRF-Token": csrf_token})

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -19,7 +19,7 @@ def create_session(
     """Create a new session and return (session_id, csrf_token)."""
     if ttl_seconds is None:
         ttl_seconds = settings.session_ttl_seconds
-    expires_at = datetime.utcnow() + timedelta(seconds=ttl_seconds)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
 
     session_id = secrets.token_urlsafe(32)  # 256-bit entropy
 
@@ -48,8 +48,11 @@ def create_session(
 def get_session(db: Session, session_id: str) -> Optional[DBSession]:
     """Get a session by ID, checking expiry."""
     session = db.query(DBSession).filter(DBSession.id == session_id).first()
-    if session and session.expires_at > datetime.utcnow():
-        return session
+    if session:
+        # Assume stored datetime is UTC (SQLite doesn't store timezone)
+        expires_at_utc = session.expires_at.replace(tzinfo=timezone.utc) if session.expires_at.tzinfo is None else session.expires_at
+        if expires_at_utc > datetime.now(timezone.utc):
+            return session
     return None
 
 

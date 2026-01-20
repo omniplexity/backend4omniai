@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -73,7 +73,7 @@ def bootstrap_admin(request: Request, body: BootstrapRequest, db: Session = Depe
     return resp
 
 
-@router.post("/invites")
+@router.post("/invites", dependencies=[Depends(require_csrf)])
 def create_invite_endpoint(
     request: Request,
     body: CreateInviteRequest,
@@ -81,11 +81,10 @@ def create_invite_endpoint(
     db: Session = Depends(get_db),
 ) -> dict:
     """Create a new invite code (admin only)."""
-    require_csrf(request)
 
     import secrets
     code = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=body.expires_in_hours)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=body.expires_in_hours)
 
     invite = create_invite(db, code=code, expires_at=expires_at, created_by=admin.id)
 
@@ -143,7 +142,7 @@ def list_users(
     }
 
 
-@router.patch("/users/{user_id}")
+@router.patch("/users/{user_id}", dependencies=[Depends(require_csrf)])
 def update_user(
     user_id: int,
     request: Request,
@@ -152,7 +151,6 @@ def update_user(
     db: Session = Depends(get_db),
 ) -> dict:
     """Update user status/role (admin only)."""
-    require_csrf(request)
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -201,7 +199,7 @@ def get_user_quota(
     }
 
 
-@router.put("/quotas/{user_id}")
+@router.put("/quotas/{user_id}", dependencies=[Depends(require_csrf)])
 def update_user_quota(
     user_id: int,
     request: Request,
@@ -210,7 +208,6 @@ def update_user_quota(
     db: Session = Depends(get_db),
 ) -> dict:
     """Update user quota (admin only)."""
-    require_csrf(request)
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -231,7 +228,7 @@ def update_user_quota(
     }
 
 
-@router.post("/invites/{code}/revoke")
+@router.post("/invites/{code}/revoke", dependencies=[Depends(require_csrf)])
 def revoke_invite(
     code: str,
     request: Request,
@@ -239,7 +236,6 @@ def revoke_invite(
     db: Session = Depends(get_db),
 ) -> dict:
     """Revoke an invite (admin only)."""
-    require_csrf(request)
 
     invite = db.query(Invite).filter(Invite.code == code).first()
     if not invite:
@@ -248,7 +244,7 @@ def revoke_invite(
     if invite.revoked_at:
         raise HTTPException(status_code=400, detail={"code": "ALREADY_REVOKED", "message": "Invite already revoked"})
 
-    invite.revoked_at = datetime.utcnow()
+    invite.revoked_at = datetime.now(timezone.utc)
 
     write_audit(db, admin.id, "INVITE_REVOKED", f"invite:{code}", request)
     db.commit()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -35,7 +35,7 @@ def consume_invite(session: Session, code: str, used_by: int) -> Optional[Invite
         Invite.code == code,
         Invite.used_by.is_(None),
         Invite.revoked_at.is_(None),
-        Invite.expires_at > datetime.utcnow()
+        Invite.expires_at > datetime.now(timezone.utc)
     ).first()
     if invite:
         invite.used_by = used_by
