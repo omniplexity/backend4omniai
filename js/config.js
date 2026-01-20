@@ -1,7 +1,7 @@
 // OmniAI WebUI Configuration
 
-// Default backend URL - update this to your tunnel URL
-window.OMNI_API_BASE_URL = "https://rossie-chargeful-plentifully.ngrok-free.dev";
+// Default backend URL - localhost for development, tunnel for production
+window.OMNI_API_BASE_URL = "http://localhost:8787";
 
 function getApiBaseUrl() {
     // Check URL query param first (for developers)

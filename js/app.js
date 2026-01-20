@@ -25,6 +25,7 @@
     // UI state
     let sidebarOpen = false;
     let settingsDrawerOpen = false;
+    let rightDrawerOpen = false;
     let controlsPanelOpen = false;
     let userScrolledUp = false;
 
@@ -218,6 +219,7 @@
         // Close settings drawer if controls panel opens
         if (controlsPanelOpen) {
             closeSettingsDrawer();
+            closeRightDrawer();
             syncQuickControls();
         }
     }
@@ -242,6 +244,84 @@
         if (quickMaxTokens) quickMaxTokens.value = maxTokens || '';
         if (tempDisplay) tempDisplay.textContent = temp.toFixed(1);
         if (topPDisplay) topPDisplay.textContent = topP.toFixed(2);
+    }
+
+    // ============================================
+    // RIGHT DRAWER
+    // ============================================
+
+    function toggleRightDrawer(open) {
+        rightDrawerOpen = open !== undefined ? open : !rightDrawerOpen;
+        const drawer = $('right-drawer');
+        if (drawer) {
+            drawer.classList.toggle('hidden', !rightDrawerOpen);
+        }
+
+        // Close other panels when right drawer opens
+        if (rightDrawerOpen) {
+            closeSettingsDrawer();
+            closeControlsPanel();
+            syncRightDrawerSettings();
+        }
+    }
+
+    function closeRightDrawer() {
+        toggleRightDrawer(false);
+    }
+
+    function syncRightDrawerSettings() {
+        const temp = getTemperature();
+        const topP = getTopP();
+        const maxTokens = getMaxTokens();
+
+        // Generation tab
+        const genTemp = $('drawer-gen-temperature');
+        const genTempRange = $('drawer-gen-temperature-range');
+        const genTopP = $('drawer-gen-top-p');
+        const genTopPRange = $('drawer-gen-top-p-range');
+        const genMaxTokens = $('drawer-gen-max-tokens');
+
+        if (genTemp) genTemp.value = temp;
+        if (genTempRange) genTempRange.value = temp;
+        if (genTopP) genTopP.value = topP;
+        if (genTopPRange) genTopPRange.value = topP;
+        if (genMaxTokens) genMaxTokens.value = maxTokens || '';
+
+        // Update controls pill
+        updateControlsPill();
+    }
+
+    function updateControlsPill() {
+        const temp = getTemperature();
+        const topP = getTopP();
+        const maxTokens = getMaxTokens();
+        const pill = $('controls-pill');
+
+        if (pill) {
+            const parts = [];
+            parts.push(`Temp ${temp.toFixed(1)}`);
+            parts.push(`Top-P ${topP.toFixed(1)}`);
+            if (maxTokens) {
+                parts.push(`Tokens ${maxTokens}`);
+            } else {
+                parts.push('Tokens Auto');
+            }
+            pill.textContent = parts.join(' · ');
+        }
+    }
+
+    function switchDrawerTab(tabName) {
+        // Update tab buttons
+        const tabs = $$('.drawer-tab');
+        tabs.forEach(tab => {
+            tab.classList.toggle('active', tab.dataset.tab === tabName);
+        });
+
+        // Update sections
+        const sections = $$('.drawer-section');
+        sections.forEach(section => {
+            section.classList.toggle('active', section.id === `drawer-${tabName}-section`);
+        });
     }
 
     // ============================================
@@ -277,22 +357,102 @@
     // CONNECTION STATUS
     // ============================================
 
-    function updateConnectionStatus(status) {
+    let healthCheckInterval = null;
+    let healthCheckBackoff = 1000; // Start with 1s backoff
+    const maxBackoff = 30000; // Max 30s
+    let lastHealthError = null;
+
+    function updateConnectionStatus(status, error = null) {
         const indicator = $('connection-indicator');
         const text = $('connection-text');
 
         if (indicator) {
             indicator.classList.remove('online', 'offline', 'connecting');
             indicator.classList.add(status);
+
+            // Set tooltip with error reason
+            if (error) {
+                indicator.title = `Connection failed: ${error}`;
+            } else {
+                indicator.title = status === 'online' ? 'Connected to backend' : status === 'offline' ? 'Backend unreachable' : 'Connecting...';
+            }
         }
 
         if (text) {
             const labels = {
-                online: 'Connected',
+                online: 'Online',
                 offline: 'Offline',
                 connecting: 'Connecting...'
             };
             text.textContent = labels[status] || 'Unknown';
+        }
+
+        lastHealthError = error;
+    }
+
+    async function performHealthCheck() {
+        try {
+            const baseUrl = getApiBaseUrl();
+            const response = await fetch(`${baseUrl}/health`, {
+                method: 'GET',
+                credentials: 'include',
+                signal: AbortSignal.timeout(5000) // 5s timeout
+            });
+
+            if (response.ok) {
+                updateConnectionStatus('online');
+                healthCheckBackoff = 1000; // Reset backoff on success
+                return true;
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            let errorReason = 'Network error';
+            if (error.name === 'TimeoutError') {
+                errorReason = 'Timeout';
+            } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                errorReason = 'Network unreachable';
+            } else if (error.message.includes('CORS')) {
+                errorReason = 'CORS policy blocked';
+            } else if (error.message.includes('404')) {
+                errorReason = 'Endpoint not found';
+            } else if (error.message.includes('403')) {
+                errorReason = 'Forbidden';
+            } else if (error.message.includes('TLS') || error.message.includes('SSL')) {
+                errorReason = 'TLS/SSL error';
+            }
+
+            updateConnectionStatus('offline', errorReason);
+            return false;
+        }
+    }
+
+    function startHealthCheck() {
+        if (healthCheckInterval) {
+            clearInterval(healthCheckInterval);
+        }
+
+        // Initial check
+        performHealthCheck();
+
+        // Periodic check every 10 seconds
+        healthCheckInterval = setInterval(async () => {
+            const success = await performHealthCheck();
+            if (!success) {
+                // Exponential backoff on failure
+                healthCheckBackoff = Math.min(healthCheckBackoff * 2, maxBackoff);
+                clearInterval(healthCheckInterval);
+                setTimeout(() => {
+                    startHealthCheck(); // Restart with new backoff
+                }, healthCheckBackoff);
+            }
+        }, 10000);
+    }
+
+    function stopHealthCheck() {
+        if (healthCheckInterval) {
+            clearInterval(healthCheckInterval);
+            healthCheckInterval = null;
         }
     }
 
@@ -644,7 +804,6 @@
             syncDrawerSettings();
             updateApiBaseUrlInput();
             updateComposerState();
-            updateConnectionStatus('online');
 
             const savedConversationId = getCurrentConversationId();
             if (savedConversationId) {
@@ -1157,6 +1316,7 @@
 
     async function initApp() {
         bindEvents();
+        startHealthCheck();
         await initializeAuth();
         handleRouteChange();
     }

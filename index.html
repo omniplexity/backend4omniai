@@ -134,6 +134,26 @@
 
                 <!-- Main Chat Area -->
                 <main id="main">
+                    <!-- Conversation Header -->
+                    <div id="conversation-header">
+                        <div id="conversation-header-left">
+                            <div id="model-pill">
+                                <span id="model-pill-provider">Provider</span>
+                                <span id="model-pill-model">Model</span>
+                            </div>
+                            <div id="status-chip">
+                                <span id="status-chip-indicator" class="status-indicator"></span>
+                                <span id="status-chip-text">Offline</span>
+                            </div>
+                        </div>
+                        <div id="conversation-header-right">
+                            <button id="drawer-toggle-btn" class="btn-ghost" aria-label="Open controls drawer">
+                                <span class="icon-sliders"></span>
+                                <span id="controls-pill">Temp 0.7 · Top-P 1 · Tokens Auto</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Chat Header Actions -->
                     <div id="chat-header-actions" class="hidden">
                         <button id="rename-chat-btn" class="btn-ghost" aria-label="Rename conversation">Rename</button>
