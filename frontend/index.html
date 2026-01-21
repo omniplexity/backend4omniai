@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>OmniAI</title>
-    <link rel="stylesheet" href="assets/css/style.css?t=1737331200">
+    <link rel="stylesheet" href="assets/css/style.css?t=1737500000">
 </head>
 <body>
     <div id="app" data-page="chat">
@@ -56,6 +56,33 @@
                 </form>
                 <div id="register-error" class="error-message hidden"></div>
                 <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign in</a></p>
+            </div>
+        </div>
+
+        <!-- Setup View (Backend Configuration) -->
+        <div id="setup-view" class="view auth-view hidden">
+            <div class="auth-container">
+                <div class="auth-logo">OmniAI</div>
+                <h1>Connect to Backend</h1>
+                <p class="auth-subtitle">Enter your backend server URL to get started</p>
+                <form id="setup-form">
+                    <div class="form-group">
+                        <label for="setup-backend-url">Backend URL</label>
+                        <input type="url" id="setup-backend-url" placeholder="https://your-tunnel-url.com" required aria-label="Backend URL">
+                        <span class="setting-hint">Your Cloudflare Tunnel or ngrok URL</span>
+                    </div>
+                    <button type="submit" class="btn-primary btn-full">Connect</button>
+                </form>
+                <div id="setup-error" class="error-message hidden"></div>
+                <div class="setup-help">
+                    <h3>Need help?</h3>
+                    <p>OmniAI requires a backend server running on your local machine, exposed via a tunnel service.</p>
+                    <ol>
+                        <li>Start the backend: <code>python backend/devserver.py</code></li>
+                        <li>Expose it with Cloudflare Tunnel or ngrok</li>
+                        <li>Enter the tunnel URL above</li>
+                    </ol>
+                </div>
             </div>
         </div>
 
@@ -418,15 +445,15 @@
         </div>
     </div>
 
-    <script src="js/config.js?t=1737342000"></script>
-    <script src="js/api.js?t=1737331200"></script>
-    <script src="js/auth.js?t=1737331200"></script>
-    <script src="js/sse.js?t=1737331200"></script>
-    <script src="js/store.js?t=1737331200"></script>
-    <script src="js/render.js?t=1737331200"></script>
-    <script src="js/admin.js?t=1737331200"></script>
-    <script src="js/command-palette.js?t=1737331200"></script>
-    <script src="js/prompt-dock.js?t=1737340579"></script>
-    <script src="js/app.js?t=1737331200" defer></script>
+    <script src="js/config.js?t=1737500000"></script>
+    <script src="js/api.js?t=1737500000"></script>
+    <script src="js/auth.js?t=1737500000"></script>
+    <script src="js/sse.js?t=1737500000"></script>
+    <script src="js/store.js?t=1737500000"></script>
+    <script src="js/render.js?t=1737500000"></script>
+    <script src="js/admin.js?t=1737500000"></script>
+    <script src="js/command-palette.js?t=1737500000"></script>
+    <script src="js/prompt-dock.js?t=1737500000"></script>
+    <script src="js/app.js?t=1737500000" defer></script>
 </body>
 </html>

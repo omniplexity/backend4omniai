@@ -504,6 +504,50 @@ button:disabled {
     font-size: var(--font-size-sm);
 }
 
+/* Setup View Help Section */
+.setup-help {
+    margin-top: var(--space-8);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+}
+
+.setup-help h3 {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--space-3);
+    color: var(--text-1);
+}
+
+.setup-help p {
+    color: var(--text-3);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-4);
+}
+
+.setup-help ol {
+    padding-left: var(--space-5);
+    color: var(--text-2);
+    font-size: var(--font-size-sm);
+}
+
+.setup-help li {
+    margin-bottom: var(--space-2);
+    line-height: 1.6;
+}
+
+.setup-help code {
+    background: var(--bg-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--primary);
+}
+
+.auth-container .form-group .setting-hint {
+    margin-top: var(--space-1);
+    font-size: var(--font-size-xs);
+}
+
 /* ============================================
    8. CHAT VIEW LAYOUT
    ============================================ */

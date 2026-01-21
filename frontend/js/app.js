@@ -86,6 +86,20 @@
         const route = getRoute();
         const user = getCurrentUser();
 
+        // On GitHub Pages without backend config, show setup first
+        if (!hasBackendConfigured() && isGitHubPages()) {
+            if (route !== 'setup') {
+                showView('setup-view');
+                return;
+            }
+        }
+
+        // Setup route handling
+        if (route === 'setup') {
+            showView('setup-view');
+            return;
+        }
+
         // Unauthenticated users can only access login/register
         if (!user && route !== 'register') {
             showView('login-view');
@@ -575,6 +589,12 @@
     // ============================================
 
     async function initializeAuth() {
+        // On GitHub Pages, check for backend configuration first
+        if (!hasBackendConfigured() && isGitHubPages()) {
+            setRoute('setup');
+            return;
+        }
+
         const user = getCurrentUser();
         updateUserDisplay(user);
 
@@ -622,6 +642,67 @@
             if (errorEl) {
                 errorEl.textContent = error.message;
                 errorEl.classList.remove('hidden');
+            }
+        }
+    }
+
+    async function handleSetupSubmit(e) {
+        e.preventDefault();
+        const backendUrl = $('setup-backend-url')?.value?.trim();
+
+        if (!backendUrl) return;
+
+        // Validate URL format
+        try {
+            new URL(backendUrl);
+        } catch {
+            const errorEl = $('setup-error');
+            if (errorEl) {
+                errorEl.textContent = 'Please enter a valid URL';
+                errorEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        // Test connection to backend
+        const errorEl = $('setup-error');
+        const submitBtn = $('setup-form')?.querySelector('button[type="submit"]');
+
+        if (submitBtn) {
+            submitBtn.textContent = 'Connecting...';
+            submitBtn.disabled = true;
+        }
+
+        try {
+            // Temporarily set the URL to test it
+            setApiBaseUrl(backendUrl);
+
+            // Try to reach the health endpoint
+            const response = await fetch(`${backendUrl}/health`, {
+                method: 'GET',
+                headers: { 'ngrok-skip-browser-warning': 'true' },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}`);
+            }
+
+            // Success! Proceed to login
+            if (errorEl) errorEl.classList.add('hidden');
+            setRoute('login');
+
+        } catch (error) {
+            // Clear the URL since it didn't work
+            clearBackendConfig();
+
+            if (errorEl) {
+                errorEl.textContent = `Could not connect to backend: ${error.message}`;
+                errorEl.classList.remove('hidden');
+            }
+        } finally {
+            if (submitBtn) {
+                submitBtn.textContent = 'Connect';
+                submitBtn.disabled = false;
             }
         }
     }
@@ -1032,6 +1113,7 @@
         // Auth forms
         bindEvent('login-form', 'submit', handleLoginSubmit);
         bindEvent('register-form', 'submit', handleRegisterSubmit);
+        bindEvent('setup-form', 'submit', handleSetupSubmit);
         bindClick('show-register', (e) => { e.preventDefault(); setRoute('register'); });
         bindClick('show-login', (e) => { e.preventDefault(); setRoute('login'); });
         bindClick('logout-btn', handleLogoutClick);
