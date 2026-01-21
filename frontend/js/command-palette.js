@@ -446,6 +446,3 @@ class CommandPalette {
 document.addEventListener('DOMContentLoaded', () => {
     window.commandPalette = new CommandPalette();
 });
-
-// Make it globally available
-window.commandPalette = commandPalette;
