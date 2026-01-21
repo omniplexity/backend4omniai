@@ -227,9 +227,9 @@ function renderMessageContent(content) {
 
     // Escape HTML first
     let escaped = content
-        .replace(/&/g, '&')
-        .replace(/</g, '<')
-        .replace(/>/g, '>');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 
     // Process code blocks
     escaped = escaped.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
@@ -344,161 +344,60 @@ function finalizeLastMessage() {
 // ============================================
 
 function renderProviders(providers) {
-    // Topbar select (remove this later)
     const select = document.getElementById('provider-select');
-    if (select) {
-        select.innerHTML = '<option value="">Provider</option>';
+    if (!select) return;
 
-        if (providers && providers.length > 0) {
-            providers.forEach(provider => {
-                const option = document.createElement('option');
-                option.value = provider.provider_id;
-                option.textContent = provider.name;
-                select.appendChild(option);
-            });
-        }
+    select.innerHTML = '<option value="">Provider</option>';
 
-        // Restore selected provider
-        const selected = getSelectedProvider();
-        if (selected) {
-            const optionExists = select.querySelector(`option[value="${selected}"]`);
-            if (optionExists) {
-                select.value = selected;
-                // Trigger change to load models
-                select.dispatchEvent(new Event('change'));
-            } else {
-                // Clear stale provider
-                setSelectedProvider('');
-            }
-        }
+    if (providers && providers.length > 0) {
+        providers.forEach(provider => {
+            const option = document.createElement('option');
+            option.value = provider.provider_id;
+            option.textContent = provider.name;
+            select.appendChild(option);
+        });
     }
 
-    // Drawer select
-    const drawerSelect = document.getElementById('drawer-provider-select');
-    if (drawerSelect) {
-        drawerSelect.innerHTML = '<option value="">Select Provider</option>';
-
-        if (providers && providers.length > 0) {
-            providers.forEach(provider => {
-                const option = document.createElement('option');
-                option.value = provider.provider_id;
-                option.textContent = provider.name;
-                drawerSelect.appendChild(option);
-            });
-        }
-
-        // Restore selected provider
-        const selected = getSelectedProvider();
-        if (selected) {
-            const optionExists = drawerSelect.querySelector(`option[value="${selected}"]`);
-            if (optionExists) {
-                drawerSelect.value = selected;
-            }
+    // Restore selected provider
+    const selected = getSelectedProvider();
+    if (selected) {
+        const optionExists = select.querySelector(`option[value="${selected}"]`);
+        if (optionExists) {
+            select.value = selected;
+            // Trigger change to load models
+            select.dispatchEvent(new Event('change'));
+        } else {
+            // Clear stale provider
+            setSelectedProvider('');
         }
     }
 }
 
 function renderModels(models) {
-    // Topbar select (remove this later)
     const select = document.getElementById('model-select');
-    if (select) {
-        select.innerHTML = '<option value="">Model</option>';
+    if (!select) return;
 
-        if (models && models.length > 0) {
-            models.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model.id;
-                option.textContent = model.name;
-                select.appendChild(option);
-            });
-            select.disabled = false;
-        } else {
-            select.disabled = true;
-        }
+    select.innerHTML = '<option value="">Model</option>';
 
-        // Restore selected model
-        const selected = getSelectedModel();
-        if (selected) {
-            const optionExists = select.querySelector(`option[value="${selected}"]`);
-            if (optionExists) {
-                select.value = selected;
-            }
-        }
+    if (models && models.length > 0) {
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = model.name;
+            select.appendChild(option);
+        });
+        select.disabled = false;
+    } else {
+        select.disabled = true;
     }
 
-    // Drawer select
-    const drawerSelect = document.getElementById('drawer-model-select');
-    if (drawerSelect) {
-        drawerSelect.innerHTML = '<option value="">Select Model</option>';
-
-        if (models && models.length > 0) {
-            models.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model.id;
-                option.textContent = model.name;
-                drawerSelect.appendChild(option);
-            });
-            drawerSelect.disabled = false;
-        } else {
-            drawerSelect.disabled = true;
+    // Restore selected model
+    const selected = getSelectedModel();
+    if (selected) {
+        const optionExists = select.querySelector(`option[value="${selected}"]`);
+        if (optionExists) {
+            select.value = selected;
         }
-
-        // Restore selected model
-        const selected = getSelectedModel();
-        if (selected) {
-            const optionExists = drawerSelect.querySelector(`option[value="${selected}"]`);
-            if (optionExists) {
-                drawerSelect.value = selected;
-            }
-        }
-    }
-}
-
-// ============================================
-// MODEL PILL & STATUS CHIP
-// ============================================
-
-function updateModelPill() {
-    const providerId = getSelectedProvider();
-    const modelId = getSelectedModel();
-
-    const providerEl = document.getElementById('model-pill-provider');
-    const modelEl = document.getElementById('model-pill-model');
-
-    if (providerEl && modelEl) {
-        if (providerId && modelId) {
-            providerEl.textContent = providerId;
-            modelEl.textContent = modelId;
-        } else {
-            providerEl.textContent = 'Provider';
-            modelEl.textContent = 'Model';
-        }
-    }
-}
-
-function updateStatusChip(status, error = null) {
-    const indicator = document.getElementById('status-chip-indicator');
-    const text = document.getElementById('status-chip-text');
-
-    if (indicator) {
-        indicator.classList.remove('online', 'offline', 'connecting');
-        indicator.classList.add(status);
-
-        // Set tooltip with error reason
-        if (error) {
-            indicator.title = `Connection failed: ${error}`;
-        } else {
-            indicator.title = status === 'online' ? 'Connected to backend' : status === 'offline' ? 'Backend unreachable' : 'Connecting...';
-        }
-    }
-
-    if (text) {
-        const labels = {
-            online: 'Online',
-            offline: 'Offline',
-            connecting: 'Connecting...'
-        };
-        text.textContent = labels[status] || 'Unknown';
     }
 }
 

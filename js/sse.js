@@ -1,11 +1,5 @@
 // OmniAI WebUI SSE Streaming Parser
 
-// Debug logging (check if enabled)
-function debugLog(type, data = {}) {
-    if (!window.__OMNI_DEBUG__) return;
-    console.log(`[${new Date().toISOString()}] ${type}`, data);
-}
-
 class SSEParser {
     constructor(url, options = {}) {
         this.url = url;
@@ -38,19 +32,7 @@ class SSEParser {
             });
 
             if (!response.ok) {
-                // Try to get detailed error message from response
-                let errorMsg = `HTTP ${response.status}`;
-                try {
-                    const errorData = await response.json();
-                    errorMsg = errorData.detail?.message || errorData.detail || errorData.message || errorMsg;
-                } catch (e) {
-                    // Response wasn't JSON, try text
-                    try {
-                        const text = await response.text();
-                        if (text) errorMsg += `: ${text.slice(0, 200)}`;
-                    } catch (e2) {}
-                }
-                throw new Error(errorMsg);
+                throw new Error(`HTTP ${response.status}`);
             }
 
             this.controller = new AbortController();
@@ -87,7 +69,6 @@ class SSEParser {
                         }
                         try {
                             const event = JSON.parse(data);
-                            debugLog('SSE_EVENT', { type: event.type, data: event });
                             this.onEvent(event);
                         } catch (error) {
                             console.warn('Failed to parse SSE event:', data, error);
@@ -116,23 +97,23 @@ class SSEParser {
 }
 
 // Helper function to stream chat
-// Note: Model tuning params (temperature, top_p, max_tokens) are NOT sent -
-// the backend/LM Studio handles model tuning, we just specify provider and model
-async function streamChat(conversationId, providerId, modelId, onEvent, onError, onDisconnect) {
+async function streamChat(conversationId, providerId, modelId, settings = {}, onEvent, onError, onDisconnect) {
     const baseUrl = getApiBaseUrl();
+    const url = `${baseUrl}/conversations/${conversationId}/stream`;
 
-    // Build query parameters - only provider and model, no tuning params
-    const params = new URLSearchParams();
-    params.append('provider_id', providerId);
-    params.append('model', modelId);
-
-    const url = `${baseUrl}/conversations/${conversationId}/stream?${params.toString()}`;
+    const body = JSON.stringify({
+        provider_id: providerId,
+        model_id: modelId,
+        generation_settings: settings,
+    });
 
     const parser = new SSEParser(url, {
         method: 'POST',
         headers: {
+            'Content-Type': 'application/json',
             'ngrok-skip-browser-warning': 'true',
         },
+        body,
         onEvent,
         onError,
         onDisconnect,

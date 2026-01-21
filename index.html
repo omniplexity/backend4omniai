@@ -7,7 +7,7 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>OmniAI</title>
-    <link rel="stylesheet" href="assets/css/style.css?t=1737331200">
+    <link rel="stylesheet" href="assets/css/style.css?t=1737500000">
 </head>
 <body>
     <div id="app" data-page="chat">
@@ -59,6 +59,33 @@
             </div>
         </div>
 
+        <!-- Setup View (Backend Configuration) -->
+        <div id="setup-view" class="view auth-view hidden">
+            <div class="auth-container">
+                <div class="auth-logo">OmniAI</div>
+                <h1>Connect to Backend</h1>
+                <p class="auth-subtitle">Enter your backend server URL to get started</p>
+                <form id="setup-form">
+                    <div class="form-group">
+                        <label for="setup-backend-url">Backend URL</label>
+                        <input type="url" id="setup-backend-url" placeholder="https://your-tunnel-url.com" required aria-label="Backend URL">
+                        <span class="setting-hint">Your Cloudflare Tunnel or ngrok URL</span>
+                    </div>
+                    <button type="submit" class="btn-primary btn-full">Connect</button>
+                </form>
+                <div id="setup-error" class="error-message hidden"></div>
+                <div class="setup-help">
+                    <h3>Need help?</h3>
+                    <p>OmniAI requires a backend server running on your local machine, exposed via a tunnel service.</p>
+                    <ol>
+                        <li>Start the backend: <code>python backend/devserver.py</code></li>
+                        <li>Expose it with Cloudflare Tunnel or ngrok</li>
+                        <li>Enter the tunnel URL above</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
         <!-- Chat View -->
         <div id="chat-view" class="view">
             <!-- Mobile Sidebar Toggle -->
@@ -107,6 +134,21 @@
                         <h1 id="chat-title" class="topbar-title">New Chat</h1>
                     </div>
                     <div id="topbar-right">
+                        <div id="model-picker">
+                            <select id="provider-select" aria-label="Provider">
+                                <option value="">Provider</option>
+                            </select>
+                            <select id="model-select" aria-label="Model" disabled>
+                                <option value="">Model</option>
+                            </select>
+                        </div>
+                        <div id="connection-status">
+                            <span id="connection-indicator" class="status-indicator"></span>
+                            <span id="connection-text">Offline</span>
+                        </div>
+                        <button id="controls-btn" class="topbar-btn" aria-label="Generation controls" title="Generation settings">
+                            <span class="icon-sliders"></span>
+                        </button>
                         <div id="user-menu">
                             <span id="user-display"></span>
                             <a href="#admin" id="admin-link" class="hidden" aria-label="Admin panel">Admin</a>
@@ -119,26 +161,6 @@
 
                 <!-- Main Chat Area -->
                 <main id="main">
-                    <!-- Conversation Header -->
-                    <div id="conversation-header">
-                        <div id="conversation-header-left">
-                            <div id="model-pill">
-                                <span id="model-pill-provider">Provider</span>
-                                <span id="model-pill-model">Model</span>
-                            </div>
-                            <div id="status-chip">
-                                <span id="status-chip-indicator" class="status-indicator"></span>
-                                <span id="status-chip-text">Offline</span>
-                            </div>
-                        </div>
-                        <div id="conversation-header-right">
-                            <button id="drawer-toggle-btn" class="btn-ghost" aria-label="Open controls drawer">
-                                <span class="icon-sliders"></span>
-                                <span id="controls-pill">Temp 0.7 � Top-P 1 � Tokens Auto</span>
-                            </button>
-                        </div>
-                    </div>
-
                     <!-- Chat Header Actions -->
                     <div id="chat-header-actions" class="hidden">
                         <button id="rename-chat-btn" class="btn-ghost" aria-label="Rename conversation">Rename</button>
@@ -202,70 +224,84 @@
                 </main>
             </div>
 
-                    <!-- Right Drawer -->
-            <div id="drawer-backdrop" class="drawer-backdrop hidden" tabindex="-1"></div>
-            <aside id="right-drawer" class="right-drawer hidden" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
-                <div id="drawer-header">
-                    <h2 id="drawer-title">Controls</h2>
-                    <button id="close-right-drawer-btn" class="btn-close" aria-label="Close drawer">&times;</button>
+            <!-- Settings Drawer -->
+            <div id="settingsDrawer" class="settings-drawer hidden" role="dialog" aria-labelledby="settings-title" aria-modal="true">
+                <div id="settings-header">
+                    <h2 id="settings-title">Settings</h2>
+                    <button id="close-settings-btn" class="btn-close" aria-label="Close settings">&times;</button>
                 </div>
-                <div id="drawer-tabs">
-                    <button class="drawer-tab active" data-tab="model" type="button">Model</button>
-                    <button class="drawer-tab" data-tab="generation" type="button">Generation</button>
-                    <button class="drawer-tab" data-tab="developer" type="button">Developer</button>
-                </div>
-                <div id="drawer-content">
-                    <div id="drawer-model-section" class="drawer-section active">
-                        <div class="drawer-group">
-                            <label for="provider-select">Provider</label>
-                            <select id="provider-select" aria-label="Provider">
-                                <option value="">Provider</option>
-                            </select>
-                        </div>
-                        <div class="drawer-group">
-                            <label for="model-select">Model</label>
-                            <select id="model-select" aria-label="Model" disabled>
-                                <option value="">Model</option>
-                            </select>
-                        </div>
-                        <div class="drawer-group model-capabilities" id="model-capabilities-placeholder">
-                            <!-- Capabilities will be rendered here -->
-                        </div>
-                    </div>
-
-                    <div id="drawer-generation-section" class="drawer-section">
-                        <div class="drawer-group">
-                            <label>Temperature <span class="drawer-hint">Controls randomness</span></label>
-                            <div class="drawer-input-row">
+                <div id="settings-content">
+                    <!-- Generation Settings -->
+                    <section id="run-settings" class="settings-section">
+                        <h3>Generation Settings</h3>
+                        <div class="setting-group">
+                            <label for="drawer-temperature">
+                                Temperature
+                                <span class="setting-hint">Controls randomness (0 = deterministic, 2 = creative)</span>
+                            </label>
+                            <div class="setting-input-row">
                                 <input type="range" id="drawer-temperature-range" min="0" max="2" step="0.1" value="0.7">
                                 <input type="number" id="drawer-temperature" min="0" max="2" step="0.1" value="0.7">
                             </div>
                         </div>
-                        <div class="drawer-group">
-                            <label>Top-P <span class="drawer-hint">Nucleus sampling</span></label>
-                            <div class="drawer-input-row">
+                        <div class="setting-group">
+                            <label for="drawer-top-p">
+                                Top-P
+                                <span class="setting-hint">Nucleus sampling threshold</span>
+                            </label>
+                            <div class="setting-input-row">
                                 <input type="range" id="drawer-top-p-range" min="0" max="1" step="0.01" value="1">
                                 <input type="number" id="drawer-top-p" min="0" max="1" step="0.01" value="1">
                             </div>
                         </div>
-                        <div class="drawer-group">
-                            <label>Max Tokens <span class="drawer-hint">Maximum response length</span></label>
+                        <div class="setting-group">
+                            <label for="drawer-max-tokens">
+                                Max Tokens
+                                <span class="setting-hint">Maximum response length</span>
+                            </label>
                             <input type="number" id="drawer-max-tokens" min="1" max="128000" step="1" placeholder="No limit">
                         </div>
-                    </div>
+                    </section>
 
-                    <div id="drawer-developer-section" class="drawer-section">
-                        <div class="drawer-group dev-info hidden" id="dev-info">
-                            <div class="dev-item">
-                                <span class="dev-label">Request/Receipt</span>
-                                <div>
-                                    <label class="toggle-label"><input type="checkbox" id="dev-toggle"><span class="toggle-switch"></span></label>
-                                </div>
+                    <!-- Presets -->
+                    <section id="presets" class="settings-section">
+                        <h3>Presets</h3>
+                        <select id="preset-select" aria-label="Select preset">
+                            <option value="">Select Preset</option>
+                        </select>
+                        <div class="preset-actions">
+                            <button id="save-preset-btn" class="btn-secondary">Save Current</button>
+                            <button id="delete-preset-btn" class="btn-ghost btn-danger">Delete</button>
+                        </div>
+                    </section>
+
+                    <!-- Prompt Templates -->
+                    <section id="prompt-dock" class="settings-section">
+                        <h3>Prompt Templates</h3>
+                        <div id="prompt-templates" class="prompt-chips"></div>
+                        <h4>Saved Prompts</h4>
+                        <div id="saved-prompts">
+                            <div class="saved-prompt-controls">
+                                <input type="text" id="new-prompt-name" placeholder="Prompt name" maxlength="50">
+                                <button id="save-prompt-btn" class="btn-secondary">Save Current</button>
+                            </div>
+                            <div id="saved-prompts-list" class="saved-prompts-list"></div>
+                        </div>
+                    </section>
+
+                    <!-- Backend Configuration -->
+                    <section id="backend-settings" class="settings-section">
+                        <h3>Backend</h3>
+                        <div class="setting-group">
+                            <label for="api-base-url">API Base URL</label>
+                            <div class="setting-input-row">
+                                <input type="url" id="api-base-url" placeholder="https://...">
+                                <button id="save-url-btn" class="btn-secondary">Save</button>
                             </div>
                         </div>
-                    </div>
+                    </section>
                 </div>
-            </aside>
+            </div>
 
             <!-- Controls Panel (Quick Settings) -->
             <div id="controls-panel" class="controls-panel hidden" role="dialog" aria-label="Quick generation settings">
@@ -405,19 +441,19 @@
 
         <div id="disconnect-banner" class="banner banner-warning hidden">
             <span>Disconnected from server.</span>
-            <button id="retry-stream" class="btn-retry">Retry</button>
+            <button id="retry-stream" class="btn-secondary">Retry</button>
         </div>
     </div>
 
-    <script src="js/config.js?t=1737331200"></script>
-    <script src="js/api.js?t=1737331200"></script>
-    <script src="js/auth.js?t=1737331200"></script>
-    <script src="js/sse.js?t=1737331200"></script>
-    <script src="js/store.js?t=1737331200"></script>
-    <script src="js/render.js?t=1737331200"></script>
-    <script src="js/admin.js?t=1737331200"></script>
-    <script src="js/command-palette.js?t=1737331200"></script>
-    <script src="js/prompt-dock.js?t=1737331200"></script>
-    <script src="js/app.js?t=1737331200" defer></script>
+    <script src="js/config.js?t=1737500000"></script>
+    <script src="js/api.js?t=1737500000"></script>
+    <script src="js/auth.js?t=1737500000"></script>
+    <script src="js/sse.js?t=1737500000"></script>
+    <script src="js/store.js?t=1737500000"></script>
+    <script src="js/render.js?t=1737500000"></script>
+    <script src="js/admin.js?t=1737500000"></script>
+    <script src="js/command-palette.js?t=1737500000"></script>
+    <script src="js/prompt-dock.js?t=1737500000"></script>
+    <script src="js/app.js?t=1737500000" defer></script>
 </body>
 </html>

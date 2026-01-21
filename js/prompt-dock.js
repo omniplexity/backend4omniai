@@ -66,6 +66,10 @@ class PromptDock {
 
     renderTemplates() {
         const container = document.getElementById('prompt-templates');
+        if (!container) {
+            console.error('Prompt templates container not found');
+            return;
+        }
         container.innerHTML = '';
 
         this.templates.forEach((template, index) => {
@@ -80,6 +84,10 @@ class PromptDock {
 
     renderSavedPrompts() {
         const container = document.getElementById('saved-prompts-list');
+        if (!container) {
+            console.error('Saved prompts container not found');
+            return;
+        }
         container.innerHTML = '';
 
         if (this.savedPrompts.length === 0) {

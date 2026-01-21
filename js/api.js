@@ -11,17 +11,9 @@ function setCsrfToken(token) {
     localStorage.setItem('csrfToken', token);
 }
 
-// Debug logging (check if enabled in app.js)
-function debugLog(type, data = {}) {
-    if (!window.__OMNI_DEBUG__) return;
-    console.log(`[${new Date().toISOString()}] ${type}`, data);
-}
-
 async function apiRequest(endpoint, options = {}) {
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}${endpoint}`;
-
-    debugLog('API_REQUEST', { method: options.method || 'GET', url });
 
     const headers = {
         'Content-Type': 'application/json',
@@ -51,20 +43,11 @@ async function apiRequest(endpoint, options = {}) {
         }
 
         if (!response.ok) {
-            let errorMsg = `HTTP ${response.status}`;
-            try {
-                const errorData = await response.json();
-                errorMsg = errorData.message || errorMsg;
-                debugLog('API_RESPONSE', { status: response.status, error: errorData });
-            } catch (e) {
-                debugLog('API_RESPONSE', { status: response.status, error: errorMsg });
-            }
-            throw new Error(errorMsg);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `HTTP ${response.status}`);
         }
 
-        const result = await response.json();
-        debugLog('API_RESPONSE', { status: response.status, success: true });
-        return result;
+        return await response.json();
     } catch (error) {
         console.error('API request failed:', error);
         throw error;
@@ -153,10 +136,15 @@ async function getConversationMessages(conversationId) {
     return await apiRequest(`/conversations/${conversationId}/messages`);
 }
 
-// Append a user message to a conversation (uses query parameter as expected by backend)
-async function appendMessage(conversationId, content) {
-    return await apiRequest(`/conversations/${conversationId}/messages?content=${encodeURIComponent(content)}`, {
+async function createMessage(conversationId, content, providerId, modelId, settings = {}) {
+    return await apiRequest(`/conversations/${conversationId}/messages`, {
         method: 'POST',
+        body: JSON.stringify({
+            content,
+            provider_id: providerId,
+            model_id: modelId,
+            generation_settings: settings,
+        }),
     });
 }
 

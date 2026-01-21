@@ -61,35 +61,16 @@
     --line-height-normal: 1.5;
     --line-height-relaxed: 1.625;
 
-    /* Spacing Scale (8px grid) */
-    --s-1: 0.125rem;   /* 2px */
-    --s-2: 0.25rem;    /* 4px */
-    --s-3: 0.375rem;   /* 6px */
-    --s-4: 0.5rem;     /* 8px */
-    --s-5: 0.625rem;   /* 10px */
-    --s-6: 0.75rem;    /* 12px */
-    --s-7: 0.875rem;   /* 14px */
-    --s-8: 1rem;       /* 16px */
-    --s-9: 1.125rem;   /* 18px */
-    --s-10: 1.25rem;   /* 20px */
-    --s-11: 1.375rem;  /* 22px */
-    --s-12: 1.5rem;    /* 24px */
-    --s-14: 1.75rem;   /* 28px */
-    --s-16: 2rem;      /* 32px */
-    --s-18: 2.25rem;   /* 36px */
-    --s-20: 2.5rem;    /* 40px */
-    --s-24: 3rem;      /* 48px */
-
-    /* Legacy spacing (keep for compatibility) */
-    --space-1: var(--s-4);   /* 4px */
-    --space-2: var(--s-4);   /* 8px */
-    --space-3: var(--s-6);   /* 12px */
-    --space-4: var(--s-8);   /* 16px */
-    --space-5: var(--s-10);  /* 20px */
-    --space-6: var(--s-12);  /* 24px */
-    --space-8: var(--s-16);  /* 32px */
-    --space-10: var(--s-20); /* 40px */
-    --space-12: var(--s-24); /* 48px */
+    /* Spacing Scale */
+    --space-1: 0.25rem;   /* 4px */
+    --space-2: 0.5rem;    /* 8px */
+    --space-3: 0.75rem;   /* 12px */
+    --space-4: 1rem;      /* 16px */
+    --space-5: 1.25rem;   /* 20px */
+    --space-6: 1.5rem;    /* 24px */
+    --space-8: 2rem;      /* 32px */
+    --space-10: 2.5rem;   /* 40px */
+    --space-12: 3rem;     /* 48px */
 
     /* Layout */
     --sidebar-width: 280px;
@@ -523,6 +504,50 @@ button:disabled {
     font-size: var(--font-size-sm);
 }
 
+/* Setup View Help Section */
+.setup-help {
+    margin-top: var(--space-8);
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--border);
+}
+
+.setup-help h3 {
+    font-size: var(--font-size-lg);
+    margin-bottom: var(--space-3);
+    color: var(--text-1);
+}
+
+.setup-help p {
+    color: var(--text-3);
+    font-size: var(--font-size-sm);
+    margin-bottom: var(--space-4);
+}
+
+.setup-help ol {
+    padding-left: var(--space-5);
+    color: var(--text-2);
+    font-size: var(--font-size-sm);
+}
+
+.setup-help li {
+    margin-bottom: var(--space-2);
+    line-height: 1.6;
+}
+
+.setup-help code {
+    background: var(--bg-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--primary);
+}
+
+.auth-container .form-group .setting-hint {
+    margin-top: var(--space-1);
+    font-size: var(--font-size-xs);
+}
+
 /* ============================================
    8. CHAT VIEW LAYOUT
    ============================================ */
@@ -623,9 +648,9 @@ button:disabled {
 
 .btn-new-chat {
     width: 100%;
-    background: linear-gradient(180deg, var(--accent) 0%, var(--accent-hover) 100%);
+    background: var(--accent);
     color: var(--text-0);
-    padding: calc(var(--space-2) - 2px) var(--space-3);
+    padding: var(--space-3);
     border-radius: var(--radius-md);
     font-weight: 500;
 }
@@ -900,104 +925,6 @@ button:disabled {
     min-height: 0;
     position: relative;
     background: var(--bg-0);
-}
-
-/* Conversation Header */
-#conversation-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--s-8) var(--s-12);
-    background: var(--bg-1);
-    border-bottom: 1px solid var(--border);
-    max-width: 880px;
-    margin: 0 auto;
-    width: 100%;
-}
-
-#conversation-header-left {
-    display: flex;
-    align-items: center;
-    gap: var(--s-6);
-}
-
-#model-pill {
-    display: flex;
-    align-items: center;
-    gap: var(--s-2);
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: var(--s-2) var(--s-4);
-    font-size: var(--font-size-sm);
-    color: var(--text-1);
-}
-
-#model-pill-provider {
-    font-weight: 600;
-    color: var(--accent);
-}
-
-#model-pill-model {
-    color: var(--text-2);
-}
-
-#status-chip {
-    display: flex;
-    align-items: center;
-    gap: var(--s-2);
-    font-size: var(--font-size-sm);
-    color: var(--text-3);
-}
-
-#status-chip-indicator {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--muted);
-}
-
-#status-chip-indicator.online {
-    background: var(--success);
-    box-shadow: 0 0 4px var(--success);
-}
-
-#status-chip-indicator.offline {
-    background: var(--danger);
-}
-
-#status-chip-indicator.connecting {
-    background: var(--warning);
-    animation: pulse 1.5s infinite;
-}
-
-#conversation-header-right {
-    display: flex;
-    align-items: center;
-}
-
-#drawer-toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: var(--s-2);
-    background: transparent;
-    color: var(--text-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    padding: var(--s-2) var(--s-4);
-    font-size: var(--font-size-sm);
-    transition: all var(--transition-fast);
-}
-
-#drawer-toggle-btn:hover {
-    background: var(--bg-3);
-    color: var(--text-0);
-    border-color: var(--border-light);
-}
-
-#controls-pill {
-    font-weight: 500;
-    color: var(--text-1);
 }
 
 #chat-header-actions {
@@ -1559,246 +1486,7 @@ button:disabled {
 }
 
 /* ============================================
-   18. RIGHT DRAWER
-   ============================================ */
-
-#right-drawer,
-.right-drawer {
-    position: fixed;
-    top: 0;
-    right: 0;
-    width: var(--settings-drawer-width);
-    height: 100%;
-    background: var(--bg-1);
-    border-left: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    z-index: var(--z-drawer);
-    transform: translateX(100%);
-    transition: transform var(--transition-smooth);
-    box-shadow: var(--shadow-xl);
-}
-
-#right-drawer:not(.hidden),
-.right-drawer:not(.hidden) {
-    transform: translateX(0);
-}
-
-#drawer-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--s-6) var(--s-8);
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-1);
-}
-
-#drawer-title {
-    margin: 0;
-    font-size: var(--font-size-lg);
-    font-weight: 600;
-    color: var(--text-0);
-}
-
-#drawer-tabs {
-    display: flex;
-    background: var(--bg-2);
-    border-bottom: 1px solid var(--border);
-}
-
-.drawer-tab {
-    flex: 1;
-    padding: var(--s-4) var(--s-6);
-    background: transparent;
-    color: var(--text-2);
-    border: none;
-    border-bottom: 2px solid transparent;
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.drawer-tab:hover {
-    color: var(--text-0);
-    background: var(--panel-hover);
-}
-
-.drawer-tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-    background: var(--bg-1);
-}
-
-#drawer-content {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--s-6) var(--s-8);
-}
-
-.drawer-section {
-    display: none;
-}
-
-.drawer-section.active {
-    display: block;
-}
-
-.drawer-group {
-    margin-bottom: var(--s-8);
-}
-
-.drawer-group:last-child {
-    margin-bottom: 0;
-}
-
-.drawer-group label {
-    display: block;
-    font-size: var(--font-size-sm);
-    font-weight: 500;
-    color: var(--text-2);
-    margin-bottom: var(--s-3);
-}
-
-.drawer-hint {
-    display: block;
-    font-weight: 400;
-    color: var(--muted);
-    font-size: var(--font-size-xs);
-    margin-top: var(--s-2);
-}
-
-.drawer-input-row {
-    display: flex;
-    gap: var(--s-3);
-    align-items: center;
-}
-
-.drawer-input-row input[type="range"] {
-    flex: 1;
-}
-
-.drawer-input-row input[type="number"] {
-    width: 80px;
-    text-align: center;
-}
-
-.drawer-group input:not([type="range"]),
-.drawer-group select,
-.drawer-group textarea {
-    width: 100%;
-}
-
-.drawer-actions {
-    display: flex;
-    gap: var(--s-3);
-    margin-top: var(--s-4);
-}
-
-.toggle-label {
-    display: flex;
-    align-items: center;
-    gap: var(--s-3);
-    cursor: pointer;
-    font-size: var(--font-size-sm);
-    color: var(--text-2);
-    font-weight: 400;
-}
-
-.toggle-switch {
-    position: relative;
-    width: 36px;
-    height: 20px;
-    background: var(--border);
-    border-radius: 10px;
-    transition: background var(--transition-fast);
-}
-
-.toggle-switch::before {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 16px;
-    height: 16px;
-    background: var(--text-0);
-    border-radius: 50%;
-    transition: transform var(--transition-fast);
-}
-
-input[type="checkbox"]:checked + .toggle-switch {
-    background: var(--accent);
-}
-
-input[type="checkbox"]:checked + .toggle-switch::before {
-    transform: translateX(16px);
-}
-
-input[type="checkbox"] {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-}
-
-.model-capabilities {
-    display: flex;
-    gap: var(--s-4);
-    flex-wrap: wrap;
-}
-
-.capability-item {
-    font-size: var(--font-size-xs);
-    color: var(--muted);
-    background: var(--bg-3);
-    padding: var(--s-1) var(--s-3);
-    border-radius: var(--radius-sm);
-}
-
-.provider-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-2);
-}
-
-.provider-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--s-3);
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    font-size: var(--font-size-sm);
-}
-
-.provider-item.active {
-    border-color: var(--accent);
-    background: var(--accent-muted);
-}
-
-.dev-info {
-    display: flex;
-    flex-direction: column;
-    gap: var(--s-2);
-}
-
-.dev-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--s-2) var(--s-3);
-    background: var(--bg-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-xs);
-}
-
-.dev-label {
-    font-weight: 500;
-    color: var(--text-2);
-}
-
-/* ============================================
-   19. CONTROLS PANEL (Quick Settings)
+   18. CONTROLS PANEL (Quick Settings)
    ============================================ */
 
 #controls-panel,
@@ -1819,22 +1507,6 @@ input[type="checkbox"] {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-}
-
-/* Drawer backdrop used to close the right drawer on click */
-.drawer-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.45);
-    z-index: calc(var(--z-backdrop) + 1);
-    opacity: 0;
-    transition: opacity var(--transition-normal);
-    pointer-events: none;
-}
-
-.drawer-backdrop:not(.hidden) {
-    opacity: 1;
-    pointer-events: auto;
 }
 
 .control-group {
@@ -2429,6 +2101,10 @@ tbody tr:last-child td {
 
     #composer-hints {
         display: none;
+    }
+
+    #admin-nav {
+        flex-wrap: wrap;
     }
 
     .admin-tab {

@@ -1,31 +1,43 @@
 // OmniAI WebUI Configuration
 
-// Default backend URL - localhost for development, tunnel for production
-window.OMNI_API_BASE_URL = "http://localhost:8787";
+const LOCAL_API_BASE_URL = "http://127.0.0.1:8787"; // Local development backend
 
-function getApiBaseUrl() {
-    // Check URL query param first (for developers)
-    const urlParams = new URLSearchParams(window.location.search);
-    const apiParam = urlParams.get('api');
-    if (apiParam) {
-        return apiParam;
-    }
-
-    // Check localStorage override
-    const stored = localStorage.getItem('omni_api_base_url');
-    if (stored) {
-        return stored;
-    }
-
-    // Fallback to default
-    return window.OMNI_API_BASE_URL;
+// Environment detection
+function isGitHubPages() {
+    return window.location.hostname === 'omniplexity.github.io' ||
+           window.location.hostname.endsWith('.github.io');
 }
 
-// Optional: Set localStorage override (for developers)
+function isLocalhost() {
+    return window.location.hostname === 'localhost' ||
+           window.location.hostname === '127.0.0.1';
+}
+
+function getApiBaseUrl() {
+    const stored = localStorage.getItem('apiBaseUrl');
+    if (stored) return stored;
+
+    // On GitHub Pages, require explicit backend configuration
+    if (isGitHubPages()) {
+        return null; // Signal that backend URL needs to be configured
+    }
+
+    // Local development default
+    return LOCAL_API_BASE_URL;
+}
+
 function setApiBaseUrl(url) {
     if (url) {
-        localStorage.setItem('omni_api_base_url', url);
+        localStorage.setItem('apiBaseUrl', url);
     } else {
-        localStorage.removeItem('omni_api_base_url');
+        localStorage.removeItem('apiBaseUrl');
     }
+}
+
+function hasBackendConfigured() {
+    return getApiBaseUrl() !== null;
+}
+
+function clearBackendConfig() {
+    localStorage.removeItem('apiBaseUrl');
 }

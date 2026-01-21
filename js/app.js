@@ -25,12 +25,8 @@
     // UI state
     let sidebarOpen = false;
     let settingsDrawerOpen = false;
-    let rightDrawerOpen = false;
     let controlsPanelOpen = false;
     let userScrolledUp = false;
-    // Drawer focus-trap helpers
-    let _previouslyFocused = null;
-    let _drawerKeydownHandler = null;
 
     // ============================================
     // UTILITY FUNCTIONS
@@ -89,6 +85,20 @@
     function handleRouteChange() {
         const route = getRoute();
         const user = getCurrentUser();
+
+        // On GitHub Pages without backend config, show setup first
+        if (!hasBackendConfigured() && isGitHubPages()) {
+            if (route !== 'setup') {
+                showView('setup-view');
+                return;
+            }
+        }
+
+        // Setup route handling
+        if (route === 'setup') {
+            showView('setup-view');
+            return;
+        }
 
         // Unauthenticated users can only access login/register
         if (!user && route !== 'register') {
@@ -222,7 +232,6 @@
         // Close settings drawer if controls panel opens
         if (controlsPanelOpen) {
             closeSettingsDrawer();
-            closeRightDrawer();
             syncQuickControls();
         }
     }
@@ -247,115 +256,6 @@
         if (quickMaxTokens) quickMaxTokens.value = maxTokens || '';
         if (tempDisplay) tempDisplay.textContent = temp.toFixed(1);
         if (topPDisplay) topPDisplay.textContent = topP.toFixed(2);
-    }
-
-    // ============================================
-    // RIGHT DRAWER
-    // ============================================
-
-    function toggleRightDrawer(open) {
-        rightDrawerOpen = open !== undefined ? open : !rightDrawerOpen;
-        const drawer = $('right-drawer');
-        if (drawer) {
-            drawer.classList.toggle('hidden', !rightDrawerOpen);
-        }
-
-        // Close other panels when right drawer opens
-        if (rightDrawerOpen) {
-            closeSettingsDrawer();
-            closeControlsPanel();
-            syncRightDrawerSettings();
-            // show backdrop
-            const backdrop = $('drawer-backdrop');
-            if (backdrop) backdrop.classList.remove('hidden');
-            // focus trap: save previous and focus first focusable
-            _previouslyFocused = document.activeElement;
-            try {
-                const focusable = drawer.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
-                if (focusable && focusable.length) {
-                    focusable[0].focus();
-                } else {
-                    drawer.focus();
-                }
-            } catch (e) {
-                // ignore
-            }
-            // install keydown trap
-            _drawerKeydownHandler = function(e) {
-                if (e.key === 'Tab') {
-                    const nodes = Array.from(drawer.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])'))
-                        .filter(n => !n.disabled && n.offsetParent !== null);
-                    if (nodes.length === 0) return;
-                    const first = nodes[0];
-                    const last = nodes[nodes.length - 1];
-                    if (e.shiftKey && document.activeElement === first) {
-                        e.preventDefault();
-                        last.focus();
-                    } else if (!e.shiftKey && document.activeElement === last) {
-                        e.preventDefault();
-                        first.focus();
-                    }
-                } else if (e.key === 'Escape') {
-                    closeRightDrawer();
-                }
-            };
-            document.addEventListener('keydown', _drawerKeydownHandler);
-        } else {
-            // hide backdrop and remove trap
-            const backdrop = $('drawer-backdrop');
-            if (backdrop) backdrop.classList.add('hidden');
-            if (_drawerKeydownHandler) {
-                document.removeEventListener('keydown', _drawerKeydownHandler);
-                _drawerKeydownHandler = null;
-            }
-            if (_previouslyFocused && typeof _previouslyFocused.focus === 'function') {
-                _previouslyFocused.focus();
-                _previouslyFocused = null;
-            }
-        }
-    }
-
-    function closeRightDrawer() {
-        toggleRightDrawer(false);
-    }
-
-    function syncRightDrawerSettings() {
-        // Reuse existing drawer sync logic (keeps IDs consistent)
-        syncDrawerSettings();
-        updateControlsPill();
-    }
-
-    function updateControlsPill() {
-        const temp = getTemperature();
-        const topP = getTopP();
-        const maxTokens = getMaxTokens();
-        const pill = $('controls-pill');
-
-        if (pill) {
-            const parts = [];
-            parts.push(`Temp ${temp.toFixed(1)}`);
-            parts.push(`Top-P ${topP.toFixed(1)}`);
-            if (maxTokens) {
-                parts.push(`Tokens ${maxTokens}`);
-            } else {
-                parts.push('Tokens Auto');
-            }
-            pill.textContent = parts.join(' � ');
-        }
-    }
-
-    function switchDrawerTab(tabName) {
-        // Update tab buttons
-        const tabs = $$('.drawer-tab');
-        tabs.forEach(tab => {
-            tab.classList.toggle('active', tab.dataset.tab === tabName);
-        });
-
-        // Update sections
-        const sections = $$('.drawer-section');
-        sections.forEach(section => {
-            section.classList.toggle('active', section.id === `drawer-${tabName}-section`);
-        });
     }
 
     // ============================================
@@ -391,114 +291,22 @@
     // CONNECTION STATUS
     // ============================================
 
-    let healthCheckInterval = null;
-    let healthCheckBackoff = 1000; // Start with 1s backoff
-    const maxBackoff = 30000; // Max 30s
-    let lastHealthError = null;
-
-    function updateConnectionStatus(status, error = null) {
+    function updateConnectionStatus(status) {
         const indicator = $('connection-indicator');
         const text = $('connection-text');
-        const chipIndicator = $('status-chip-indicator');
-        const chipText = $('status-chip-text');
 
         if (indicator) {
             indicator.classList.remove('online', 'offline', 'connecting');
             indicator.classList.add(status);
-
-            // Set tooltip with error reason
-            if (error) {
-                indicator.title = `Connection failed: ${error}`;
-            } else {
-                indicator.title = status === 'online' ? 'Connected to backend' : status === 'offline' ? 'Backend unreachable' : 'Connecting...';
-            }
         }
 
         if (text) {
             const labels = {
-                online: 'Online',
+                online: 'Connected',
                 offline: 'Offline',
                 connecting: 'Connecting...'
             };
             text.textContent = labels[status] || 'Unknown';
-        }
-
-        // Mirror into conversation header status chip if present
-        if (chipIndicator) {
-            chipIndicator.classList.remove('online', 'offline', 'connecting');
-            chipIndicator.classList.add(status);
-        }
-        if (chipText) {
-            const labels2 = { online: 'Connected', offline: 'Offline', connecting: 'Reconnecting...' };
-            chipText.textContent = labels2[status] || '';
-        }
-
-        lastHealthError = error;
-    }
-
-    async function performHealthCheck() {
-        try {
-            const baseUrl = getApiBaseUrl();
-            const response = await fetch(`${baseUrl}/health`, {
-                method: 'GET',
-                credentials: 'include',
-                signal: AbortSignal.timeout(5000) // 5s timeout
-            });
-
-            if (response.ok) {
-                updateConnectionStatus('online');
-                healthCheckBackoff = 1000; // Reset backoff on success
-                return true;
-            } else {
-                throw new Error(`HTTP ${response.status}`);
-            }
-        } catch (error) {
-            let errorReason = 'Network error';
-            if (error.name === 'TimeoutError') {
-                errorReason = 'Timeout';
-            } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                errorReason = 'Network unreachable';
-            } else if (error.message.includes('CORS')) {
-                errorReason = 'CORS policy blocked';
-            } else if (error.message.includes('404')) {
-                errorReason = 'Endpoint not found';
-            } else if (error.message.includes('403')) {
-                errorReason = 'Forbidden';
-            } else if (error.message.includes('TLS') || error.message.includes('SSL')) {
-                errorReason = 'TLS/SSL error';
-            }
-
-            updateConnectionStatus('offline', errorReason);
-            return false;
-        }
-    }
-
-    function startHealthCheck() {
-        if (healthCheckInterval) {
-            clearInterval(healthCheckInterval);
-        }
-
-        // Initial check
-        performHealthCheck();
-
-        // Periodic check every 10 seconds
-        healthCheckInterval = setInterval(async () => {
-            const success = await performHealthCheck();
-            if (!success) {
-                // Exponential backoff on failure
-                healthCheckBackoff = Math.min(healthCheckBackoff * 2, maxBackoff);
-                clearInterval(healthCheckInterval);
-                setTimeout(() => {
-                    startHealthCheck(); // Restart with new backoff
-                }, healthCheckBackoff);
-            }
-        }, 10000);
-    }
-
-    function stopHealthCheck() {
-        if (healthCheckInterval) {
-            clearInterval(healthCheckInterval);
-            healthCheckInterval = null;
         }
     }
 
@@ -781,6 +589,12 @@
     // ============================================
 
     async function initializeAuth() {
+        // On GitHub Pages, check for backend configuration first
+        if (!hasBackendConfigured() && isGitHubPages()) {
+            setRoute('setup');
+            return;
+        }
+
         const user = getCurrentUser();
         updateUserDisplay(user);
 
@@ -832,6 +646,67 @@
         }
     }
 
+    async function handleSetupSubmit(e) {
+        e.preventDefault();
+        const backendUrl = $('setup-backend-url')?.value?.trim();
+
+        if (!backendUrl) return;
+
+        // Validate URL format
+        try {
+            new URL(backendUrl);
+        } catch {
+            const errorEl = $('setup-error');
+            if (errorEl) {
+                errorEl.textContent = 'Please enter a valid URL';
+                errorEl.classList.remove('hidden');
+            }
+            return;
+        }
+
+        // Test connection to backend
+        const errorEl = $('setup-error');
+        const submitBtn = $('setup-form')?.querySelector('button[type="submit"]');
+
+        if (submitBtn) {
+            submitBtn.textContent = 'Connecting...';
+            submitBtn.disabled = true;
+        }
+
+        try {
+            // Temporarily set the URL to test it
+            setApiBaseUrl(backendUrl);
+
+            // Try to reach the health endpoint
+            const response = await fetch(`${backendUrl}/health`, {
+                method: 'GET',
+                headers: { 'ngrok-skip-browser-warning': 'true' },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}`);
+            }
+
+            // Success! Proceed to login
+            if (errorEl) errorEl.classList.add('hidden');
+            setRoute('login');
+
+        } catch (error) {
+            // Clear the URL since it didn't work
+            clearBackendConfig();
+
+            if (errorEl) {
+                errorEl.textContent = `Could not connect to backend: ${error.message}`;
+                errorEl.classList.remove('hidden');
+            }
+        } finally {
+            if (submitBtn) {
+                submitBtn.textContent = 'Connect';
+                submitBtn.disabled = false;
+            }
+        }
+    }
+
     async function handleLogoutClick() {
         await handleLogout();
         updateUserDisplay(null);
@@ -850,6 +725,7 @@
             syncDrawerSettings();
             updateApiBaseUrlInput();
             updateComposerState();
+            updateConnectionStatus('online');
 
             const savedConversationId = getCurrentConversationId();
             if (savedConversationId) {
@@ -1217,8 +1093,6 @@
                 closeSettingsDrawer();
             } else if (controlsPanelOpen) {
                 closeControlsPanel();
-            } else if (rightDrawerOpen) {
-                closeRightDrawer();
             } else if (sidebarOpen && window.innerWidth <= 768) {
                 closeSidebar();
             }
@@ -1239,6 +1113,7 @@
         // Auth forms
         bindEvent('login-form', 'submit', handleLoginSubmit);
         bindEvent('register-form', 'submit', handleRegisterSubmit);
+        bindEvent('setup-form', 'submit', handleSetupSubmit);
         bindClick('show-register', (e) => { e.preventDefault(); setRoute('register'); });
         bindClick('show-login', (e) => { e.preventDefault(); setRoute('login'); });
         bindClick('logout-btn', handleLogoutClick);
@@ -1255,16 +1130,6 @@
         bindClick('settings-toggle-btn', () => toggleSettingsDrawer());
         bindClick('close-settings-btn', closeSettingsDrawer);
         bindClick('controls-btn', () => toggleControlsPanel());
-        // Right drawer controls
-        bindClick('drawer-toggle-btn', () => toggleRightDrawer());
-        bindClick('close-right-drawer-btn', () => closeRightDrawer());
-        bindClick('drawer-backdrop', () => closeRightDrawer());
-        // Drawer tab clicks
-        document.querySelectorAll('.drawer-tab').forEach(tab => {
-            tab.addEventListener('click', (e) => {
-                switchDrawerTab(tab.dataset.tab);
-            });
-        });
 
         // Chat actions
         bindClick('rename-chat-btn', renameCurrentConversation);
@@ -1322,18 +1187,10 @@
         document.addEventListener('click', (e) => {
             const controlsPanel = $('controls-panel');
             const controlsBtn = $('controls-btn');
+
             if (controlsPanelOpen && controlsPanel && controlsBtn) {
                 if (!controlsPanel.contains(e.target) && !controlsBtn.contains(e.target)) {
                     closeControlsPanel();
-                }
-            }
-
-            // Close right drawer when clicking outside
-            const rightDrawerEl = $('right-drawer');
-            const drawerToggle = $('drawer-toggle-btn');
-            if (rightDrawerOpen && rightDrawerEl) {
-                if (!rightDrawerEl.contains(e.target) && !(drawerToggle && drawerToggle.contains(e.target))) {
-                    closeRightDrawer();
                 }
             }
         });
@@ -1382,7 +1239,6 @@
 
     async function initApp() {
         bindEvents();
-        startHealthCheck();
         await initializeAuth();
         handleRouteChange();
     }
