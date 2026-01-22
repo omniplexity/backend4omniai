@@ -44,6 +44,8 @@ class SSEParser {
     }
 
     async processStream() {
+        let currentEventType = 'message'; // Default SSE event type
+
         try {
             while (true) {
                 const { done, value } = await this.reader.read();
@@ -61,7 +63,10 @@ class SSEParser {
                 this.buffer = lines.pop(); // Keep incomplete line in buffer
 
                 for (const line of lines) {
-                    if (line.startsWith('data: ')) {
+                    if (line.startsWith('event: ')) {
+                        // Track the event type for the next data line
+                        currentEventType = line.slice(7).trim();
+                    } else if (line.startsWith('data: ')) {
                         const data = line.slice(6);
                         if (data === '[DONE]') {
                             this.onEvent({ type: 'done' });
@@ -69,12 +74,17 @@ class SSEParser {
                         }
                         try {
                             const event = JSON.parse(data);
+                            // Add the event type from the "event:" line
+                            event.type = currentEventType;
                             this.onEvent(event);
                         } catch (error) {
                             console.warn('Failed to parse SSE event:', data, error);
                         }
-                    } else if (line.startsWith('event: ')) {
-                        // Handle event type if needed
+                        // Reset to default after processing
+                        currentEventType = 'message';
+                    } else if (line === '') {
+                        // Empty line marks end of event, reset type
+                        currentEventType = 'message';
                     }
                 }
             }
@@ -101,10 +111,13 @@ async function streamChat(conversationId, providerId, modelId, settings = {}, on
     const baseUrl = getApiBaseUrl();
     const url = `${baseUrl}/conversations/${conversationId}/stream`;
 
+    // Backend expects flat structure with "model" (not "model_id")
     const body = JSON.stringify({
         provider_id: providerId,
-        model_id: modelId,
-        generation_settings: settings,
+        model: modelId,
+        temperature: settings.temperature,
+        top_p: settings.top_p,
+        max_tokens: settings.max_tokens,
     });
 
     const parser = new SSEParser(url, {

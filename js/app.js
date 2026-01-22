@@ -902,14 +902,20 @@
             updateComposerState();
             clearMessageInput();
 
-            // Add user message
+            // Add user message to UI
             addMessageToTranscript('user', content);
+
+            // POST user message to backend first
+            await apiRequest(`/conversations/${currentConversationId}/messages`, {
+                method: 'POST',
+                body: JSON.stringify({ content }),
+            });
 
             // Add placeholder for assistant message
             addMessageToTranscript('assistant', '', true);
 
-            // Start streaming
-            await startStreaming(content, providerId, modelId);
+            // Start streaming (backend will read messages from conversation)
+            await startStreaming(providerId, modelId);
 
         } catch (error) {
             showError('Failed to send message: ' + error.message);
@@ -918,7 +924,7 @@
         }
     }
 
-    async function startStreaming(content, providerId, modelId) {
+    async function startStreaming(providerId, modelId) {
         if (currentStreamingParser) {
             currentStreamingParser.stop();
         }
@@ -945,7 +951,7 @@
     function handleStreamEvent(event) {
         switch (event.type) {
             case 'delta':
-                appendToLastMessage(event.content);
+                appendToLastMessage(event.delta);
                 break;
             case 'usage':
                 const elapsed = streamingStartTime ? (Date.now() - streamingStartTime) / 1000 : null;
