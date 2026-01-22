@@ -30,6 +30,8 @@ async function handleLogin(username, password) {
     try {
         const response = await login(username, password);
         setCurrentUser(response.user || { username });
+        // Clear stale conversation ID from previous sessions
+        localStorage.removeItem('currentConversationId');
         return response;
     } catch (error) {
         throw error;
