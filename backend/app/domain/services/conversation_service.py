@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.db.models import Conversation, Project
-from app.services.chat_service import create_conversation_service
+from backend.app.db.models import Conversation, Project
+from backend.app.services.chat_service import create_conversation_service
 
 
 def _resolve_project_id(db: Session, user_id: int, project_id: int | None) -> int | None:

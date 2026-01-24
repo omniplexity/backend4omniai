@@ -4,9 +4,9 @@ from __future__ import annotations
 import inspect
 from typing import Iterable
 
-from app.config.settings import settings
-from app.db.models import Conversation, Project, User
-from app.domain.providers.registry import registry
+from backend.app.config.settings import settings
+from backend.app.db.models import Conversation, Project, User
+from backend.app.domain.providers.registry import registry
 
 
 class ModelSelectionError(Exception):

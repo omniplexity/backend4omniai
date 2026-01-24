@@ -5,11 +5,11 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.auth.password import verify_password
-from app.auth.sessions import create_session, delete_session, get_session
-from app.core.security import create_access_token
-from app.db.models import User
-from app.db.repo.users_repo import get_user_by_username
+from backend.app.auth.password import verify_password
+from backend.app.auth.sessions import create_session, delete_session, get_session
+from backend.app.core.security import create_access_token
+from backend.app.db.models import User
+from backend.app.db.repo.users_repo import get_user_by_username
 
 
 def authenticate_user(db: Session, username: str, password: str) -> Optional[User]:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.auth.deps import require_active_user
 from backend.app.providers.registry import registry
@@ -27,6 +27,8 @@ async def list_provider_models(
     try:
         models = await registry.list_models(provider_id)
         return {"models": [{"id": m.id, "label": m.label} for m in models]}
+    except HTTPException:
+        raise
     except Exception:
         # Return empty list if provider unreachable
         return {"models": []}
