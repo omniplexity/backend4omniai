@@ -34,6 +34,10 @@ frontend/.vite/
 deploy/docker/.env
 deploy/docker/ngrok.yml
 
+# Private audit artifacts
+audit.diff
+chunk_*.diff
+
 # Runtime data
 data/
 
