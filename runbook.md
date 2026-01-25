@@ -180,7 +180,7 @@ For production deployments with automatic restarts, use the Docker Compose setup
 - **backend container**: FastAPI/Uvicorn, runs migrations on start, binds to `0.0.0.0:8787` inside container
 - **ngrok sidecar**: Waits for backend healthy, proxies `http://backend:8787`, injects `X-Origin-Secret` header
 - **No host ports published**: Backend only reachable via tunnel
-- **SQLite persistence**: Database mounted from `data/` directory
+- **SQLite persistence**: Database stored in Docker volume mounted at `/app/data`
 - **Container hardening**: backend runs as non-root, drops Linux caps, read-only root FS, tmpfs `/tmp`
 
 ### Quick Start

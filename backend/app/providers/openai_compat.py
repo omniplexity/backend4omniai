@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import AsyncIterator
 
 import httpx
@@ -26,6 +27,7 @@ class OpenAICompatProvider(Provider):
         self.api_key = api_key
         self.timeout_seconds = timeout_seconds
         self._client = client or httpx.AsyncClient(timeout=self.timeout_seconds)
+        self._logger = logging.getLogger("backend")
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -33,7 +35,7 @@ class OpenAICompatProvider(Provider):
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
-    def _map_error(self, exc: Exception) -> None:
+    def _map_error(self, exc: Exception, context: dict | None = None) -> None:
         if isinstance(exc, httpx.ConnectError):
             raise HTTPException(
                 status_code=503,
@@ -45,6 +47,7 @@ class OpenAICompatProvider(Provider):
                 detail={"code": "PROVIDER_TIMEOUT", "message": "Provider request timed out"},
             )
         elif isinstance(exc, httpx.HTTPStatusError):
+            self._log_http_error(exc, context)
             if exc.response.status_code == 429:
                 raise HTTPException(
                     status_code=429,
@@ -70,6 +73,75 @@ class OpenAICompatProvider(Provider):
                 status_code=502,
                 detail={"code": "PROVIDER_ERROR", "message": "Provider communication failed"},
             )
+
+    def _log_http_error(self, exc: httpx.HTTPStatusError, context: dict | None) -> None:
+        response = exc.response
+        status_code = response.status_code if response else None
+        url = None
+        if response:
+            try:
+                url = str(response.request.url)
+            except Exception:
+                url = str(response.url)
+
+        body = None
+        if response is not None:
+            try:
+                body = response.text
+            except Exception:
+                body = None
+        if body:
+            max_len = 2000
+            if len(body) > max_len:
+                body = f"{body[:max_len]}...(truncated)"
+
+        context_str = json.dumps(context, ensure_ascii=False) if context else None
+
+        self._logger.warning(
+            "Provider HTTP error provider_id=%s status_code=%s url=%s body=%s request=%s",
+            self.provider_id,
+            status_code,
+            url,
+            body,
+            context_str,
+        )
+
+    def _summarize_request(self, req: dict) -> dict:
+        summary: dict = {
+            "model": req.get("model"),
+            "stream": req.get("stream"),
+        }
+        if "temperature" in req:
+            summary["temperature"] = req.get("temperature")
+        if "top_p" in req:
+            summary["top_p"] = req.get("top_p")
+        if "max_tokens" in req:
+            summary["max_tokens"] = req.get("max_tokens")
+
+        messages = req.get("messages") or []
+        if isinstance(messages, list):
+            summary["messages_count"] = len(messages)
+            roles = []
+            total_chars = 0
+            last_user_len = None
+            for msg in messages:
+                if not isinstance(msg, dict):
+                    continue
+                role = msg.get("role")
+                if role and role not in roles:
+                    roles.append(role)
+                content = msg.get("content")
+                if isinstance(content, str):
+                    total_chars += len(content)
+                    if role == "user":
+                        last_user_len = len(content)
+            if roles:
+                summary["roles"] = roles
+            summary["total_chars"] = total_chars
+            if last_user_len is not None:
+                summary["last_user_len"] = last_user_len
+
+        return summary
 
     async def list_models(self) -> list[ModelInfo]:
         try:
@@ -101,7 +173,7 @@ class OpenAICompatProvider(Provider):
             response.raise_for_status()
             return response.json()
         except Exception as exc:
-            self._map_error(exc)
+            self._map_error(exc, self._summarize_request(req))
             return {}  # Should not reach here
 
     async def chat_stream(self, req: dict) -> AsyncIterator[StreamEvent]:
@@ -133,7 +205,7 @@ class OpenAICompatProvider(Provider):
                     except json.JSONDecodeError:
                         continue
         except Exception as exc:
-            self._map_error(exc)
+            self._map_error(exc, self._summarize_request(req))
 
     async def healthcheck(self) -> ProviderHealth:
         try:

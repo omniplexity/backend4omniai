@@ -106,6 +106,26 @@ curl https://xxxx-xx-xx-xx-xx.ngrok-free.app/health
 # Should return: {"status":"healthy"}
 ```
 
+### 7. Bootstrap Admin (one-time)
+
+Use the bootstrap token to create the first admin user (only works when no admin exists):
+
+**Windows PowerShell:**
+```powershell
+$env:OMNIAI_BASE_URL="https://xxxx-xx-xx-xx-xx.ngrok-free.app"
+$env:OMNIAI_BOOTSTRAP_TOKEN="<your bootstrap token>"
+$env:OMNIAI_ORIGIN_SECRET="<your origin lock secret>"
+python scripts\bootstrap_admin.py --username Omni --password "StrongPasswordHere"
+```
+
+**macOS / Linux:**
+```bash
+export OMNIAI_BASE_URL="https://xxxx-xx-xx-xx-xx.ngrok-free.app"
+export OMNIAI_BOOTSTRAP_TOKEN="<your bootstrap token>"
+export OMNIAI_ORIGIN_SECRET="<your origin lock secret>"
+python scripts/bootstrap_admin.py --username Omni --password "StrongPasswordHere"
+```
+
 ## Commands Reference
 
 | Action | Command |
@@ -193,11 +213,12 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 
 ## Data Persistence
 
-SQLite database persists at `../../data/omniplexity.db` (relative to `deploy/docker/`).
+SQLite database persists in the Docker volume `data` mounted at `/app/data`.
 
 **Backup:**
 ```bash
-cp ../../data/omniplexity.db ../../data/backup-$(date +%Y%m%d).db
+docker exec -it omniai-api sh -c "sqlite3 /app/data/omniplexity.db '.backup /app/data/backup.db'"
+docker cp omniai-api:/app/data/backup.db ./backup.db
 ```
 
 ## Reserved Domain (Paid ngrok)

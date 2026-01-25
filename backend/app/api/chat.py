@@ -366,6 +366,12 @@ async def stream_chat_generator(
     provider_meta = None
     token_usage = None
 
+    generation_done = asyncio.Event()
+    tracking_task = asyncio.create_task(generation_done.wait())
+    await generation_manager.start_generation(
+        generation_id, user.id, conversation_id, provider_id, model, tracking_task
+    )
+
     try:
         # Send meta first
         yield _sse_event(
@@ -410,14 +416,6 @@ async def stream_chat_generator(
             request["top_p"] = top_p
         if max_tokens is not None:
             request["max_tokens"] = max_tokens
-
-        # Start generation tracking
-        task = asyncio.create_task(_consume_stream(
-            provider_id, request, generation_id, user, conversation_id, db
-        ))
-        await generation_manager.start_generation(
-            generation_id, user.id, conversation_id, provider_id, model, task
-        )
 
         logger.info("Chat generation started", extra={"generation_id": generation_id, "user_id": user.id, "conversation_id": conversation_id, "provider_id": provider_id, "model": model})
 
@@ -523,17 +521,8 @@ async def stream_chat_generator(
 
     finally:
         # Cleanup
+        generation_done.set()
         await generation_manager.cleanup_generation(generation_id)
-
-
-async def _consume_stream(
-    provider_id: str, request: dict, generation_id: str, user: User, conversation_id: int, db: Session
-) -> None:
-    """Consume the stream to ensure it completes (for task tracking)."""
-    provider = registry.get(provider_id)
-    async for _ in provider.chat_stream(request):
-        if generation_manager.is_canceled(generation_id):
-            break
 
 
 @router.post("/chat/cancel/{generation_id}", dependencies=[Depends(require_csrf)])

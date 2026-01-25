@@ -45,6 +45,16 @@ def safe_json(response: httpx.Response) -> dict[str, Any]:
         return {}
 
 
+def is_embedding_model(model_id: str) -> bool:
+    lowered = model_id.lower()
+    return "embedding" in lowered or "embed" in lowered
+
+
+def is_preferred_chat_model(model_id: str) -> bool:
+    lowered = model_id.lower()
+    return "instruct" in lowered or "chat" in lowered
+
+
 def main() -> None:
     args = parse_args()
     base_url = args.base_url.rstrip("/")
@@ -114,7 +124,23 @@ def main() -> None:
         models = safe_json(models_response).get("models") or []
         if not models:
             exit_with("No models available from provider")
-        model = models[0].get("id")
+        preferred = []
+        non_embedding = []
+        for item in models:
+            model_id = item.get("id")
+            if not model_id:
+                continue
+            if is_preferred_chat_model(model_id):
+                preferred.append(model_id)
+            if not is_embedding_model(model_id):
+                non_embedding.append(model_id)
+
+        if preferred:
+            model = preferred[0]
+        elif non_embedding:
+            model = non_embedding[0]
+        else:
+            model = models[0].get("id")
         if not model:
             exit_with("Model list missing id")
 
