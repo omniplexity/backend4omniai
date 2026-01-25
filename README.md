@@ -105,7 +105,7 @@ main.py # app wiring + middleware
 migrations/ # alembic migrations
 alembic.ini
 docs/
-runbook.md # ops + deployment + troubleshooting
+docs/runbook.md # ops + deployment + troubleshooting
 deploy/
 cloudflared/ # tunnel configs + scripts
 

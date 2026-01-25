@@ -52,7 +52,7 @@ LM Studio (127.0.0.1:1234)  Ollama (127.0.0.1:11434)  OpenAI-compatible endpoint
 - **Architecture**: Modular with clean boundaries
 - **Key Modules**:
   - `backend/app/core`: shared config, logging, security, error helpers
-  - `backend/app/domain`: domain services/providers/tools (scaffolded in Phase 0)
+  - `backend/app/domain`: domain services for auth/model selection and provider registry facade
 
 #### API Layer (`backend/app/api/`)
 - **Routers**: REST endpoints organized by domain
