@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Request
@@ -116,13 +117,14 @@ async def _request_context(request: Request) -> dict:
         context["body_preview"] = body_preview
     return context
 
-app = FastAPI(title="OmniPlexity Backend", version="0.1.0")
-
-
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     """Build provider registry on startup."""
     registry.build_registry()
+    yield
+
+
+app = FastAPI(title="OmniPlexity Backend", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -82,8 +82,8 @@
 1. **Deploy**:
    - Commit frontend/ directory
    - Go to GitHub repo Settings > Pages
-   - Set source to "Deploy from a branch"
-   - Branch: `main`, Folder: `/frontend`
+   - Set source to **GitHub Actions**
+   - The `pages` workflow builds `frontend/` and publishes `frontend/dist`
    - Site URL: https://omniplexity.github.io (or custom domain)
 
 2. **Custom Domain** (optional):

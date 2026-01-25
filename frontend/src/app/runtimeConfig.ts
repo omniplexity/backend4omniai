@@ -37,9 +37,24 @@ async function resolveRuntimeConfig(): Promise<RawRuntimeConfig | null> {
     }
   }
 
-  const baseUrl = import.meta.env.BASE_URL ?? "/";
-  const baseWithSlash = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const cfgUrl = `${baseWithSlash}runtime-config.json?v=${Date.now()}`;
+  let cfgUrl: string;
+  if (typeof document !== "undefined") {
+    const moduleScript = document.querySelector("script[type=\"module\"][src]") as HTMLScriptElement | null;
+    const moduleSrc = moduleScript?.src;
+    if (moduleSrc) {
+      const base = new URL(".", moduleSrc);
+      cfgUrl = new URL("../runtime-config.json", base).toString();
+    } else {
+      const baseUrl = import.meta.env.BASE_URL ?? "/";
+      const baseWithSlash = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+      cfgUrl = `${baseWithSlash}runtime-config.json`;
+    }
+  } else {
+    const baseUrl = import.meta.env.BASE_URL ?? "/";
+    const baseWithSlash = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    cfgUrl = `${baseWithSlash}runtime-config.json`;
+  }
+  cfgUrl = `${cfgUrl}?v=${Date.now()}`;
 
   try {
     const res = await fetch(cfgUrl, { cache: "no-store" });

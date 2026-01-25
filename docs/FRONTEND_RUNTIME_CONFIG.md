@@ -23,7 +23,8 @@ Update `runtime-config.json` in the repo to the desired API hostname and redeplo
 }
 ```
 
-The runtime config is loaded in `frontend/index.html` before the app boots and exposed via `window.__RUNTIME_CONFIG__`.
+The runtime config is loaded before the app boots and exposed via `window.__RUNTIME_CONFIG__`.
+The loader resolves `runtime-config.json` relative to the built JS bundle location, so deep links do not break.
 If the file is missing, the app falls back to same-origin (useful when co-hosting frontend + backend).
 
 ## BASE_URL and GitHub Pages paths

@@ -15,16 +15,29 @@
   <body>
     <div id="root"></div>
     <script>
-      window.__RUNTIME_CONFIG__ = null;
-      window.__RUNTIME_CONFIG_PROMISE__ = (async () => {
-        try {
+      (function () {
+        function resolveRuntimeConfigUrl() {
+          const moduleScript = document.querySelector('script[type="module"][src]');
+          if (moduleScript && moduleScript.src) {
+            const base = new URL('.', moduleScript.src);
+            return new URL('../runtime-config.json', base).toString();
+          }
           const base = "%BASE_URL%";
-          const res = await fetch(`${base}runtime-config.json`, { cache: "no-store" });
-          if (!res.ok) return null;
-          return await res.json();
-        } catch {
-          return null;
+          const baseWithSlash = base.endsWith("/") ? base : `${base}/`;
+          return `${baseWithSlash}runtime-config.json`;
         }
+
+        window.__RUNTIME_CONFIG__ = null;
+        window.__RUNTIME_CONFIG_PROMISE__ = (async () => {
+          try {
+            const cfgUrl = `${resolveRuntimeConfigUrl()}?v=${Date.now()}`;
+            const res = await fetch(cfgUrl, { cache: "no-store" });
+            if (!res.ok) return null;
+            return await res.json();
+          } catch {
+            return null;
+          }
+        })();
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
