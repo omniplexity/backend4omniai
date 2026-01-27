@@ -1,9 +1,0 @@
-[tool.pytest.ini_options]
-testpaths = ["backend/tests"]
-addopts = "-q"
-
-[tool.ruff]
-line-length = 120
-
-[tool.ruff.format]
-quote-style = "double"
