@@ -56,31 +56,21 @@ export function useLMStudio() {
     checkConnection()
   }, [checkConnection])
 
-  // Update client URL when settings change
+  // Initialize connection and set up periodic health checks
   useEffect(() => {
+    // Update client URL
     lmStudioClient.setBaseUrl(lmStudioUrl)
-    reconnect()
-  }, [lmStudioUrl, reconnect])
 
-  // Set up periodic health checks
-  useEffect(() => {
-    // Initial check
+    // Initial connection check
     checkConnection()
 
-    // Periodic checks
+    // Set up periodic health checks
     intervalRef.current = setInterval(() => {
-      if (status === 'connected') {
-        // Silent health check when connected
-        lmStudioClient.healthCheck().then((health) => {
-          if (!health.ok) {
-            setStatus('error', health.error)
-            // Will trigger reconnection on next interval
-          }
-        })
-      } else if (status === 'error') {
-        // Retry connection
-        checkConnection()
-      }
+      lmStudioClient.healthCheck().then((health) => {
+        if (!health.ok) {
+          setStatus('error', health.error)
+        }
+      })
     }, HEALTH_CHECK_INTERVAL)
 
     return () => {
@@ -91,7 +81,9 @@ export function useLMStudio() {
         clearTimeout(retryTimeoutRef.current)
       }
     }
-  }, [checkConnection, setStatus, status])
+    // Only re-run when URL changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lmStudioUrl])
 
   return {
     status,
