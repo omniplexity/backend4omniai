@@ -185,7 +185,8 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         """Check if running in production mode."""
-        return not self.debug and self.secret_key != "INSECURE_DEFAULT_CHANGE_ME"
+        insecure = {"INSECURE_DEFAULT_CHANGE_ME", "CHANGE_ME_IN_PRODUCTION"}
+        return not self.debug and self.secret_key not in insecure
 
     @property
     def is_sqlite(self) -> bool:

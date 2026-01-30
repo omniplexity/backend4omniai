@@ -96,11 +96,12 @@ def get_client_ip(request: Request) -> str | None:
 def set_session_cookie(response: Response, token: str) -> None:
     """Set session cookie on response."""
     settings = get_settings()
+    secure = settings.cookie_secure if settings.is_production else False
     response.set_cookie(
         key=settings.session_cookie_name,
         value=token,
         httponly=True,
-        secure=settings.cookie_secure,
+        secure=secure,
         samesite=settings.cookie_samesite,
         domain=settings.cookie_domain or None,
         max_age=settings.session_ttl_seconds,
@@ -110,11 +111,12 @@ def set_session_cookie(response: Response, token: str) -> None:
 def set_csrf_cookie(response: Response, token: str) -> None:
     """Set CSRF cookie on response (readable by JS)."""
     settings = get_settings()
+    secure = settings.cookie_secure if settings.is_production else False
     response.set_cookie(
         key=settings.csrf_cookie_name,
         value=token,
         httponly=False,  # Must be readable by JS
-        secure=settings.cookie_secure,
+        secure=secure,
         samesite=settings.cookie_samesite,
         domain=settings.cookie_domain or None,
         max_age=settings.session_ttl_seconds,

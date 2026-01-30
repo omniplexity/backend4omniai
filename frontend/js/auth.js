@@ -24,18 +24,23 @@ export async function getCsrfToken() {
 }
 
 export async function login(credentials) {
-  const token = await fetchCsrfToken();
   const res = await fetch(`${apiBaseUrl()}/auth/login`, {
     method: "POST",
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      "X-CSRF-Token": token,
     },
     body: JSON.stringify(credentials),
   });
   if (!res.ok) {
-    throw res;
+    const payload = await res.json().catch(() => null);
+    if (payload?.error?.message) {
+      const error = new Error(payload.error.message);
+      error.code = payload.error.code;
+      error.requestId = payload.error.request_id;
+      throw error;
+    }
+    throw new Error("Invalid credentials");
   }
   await fetchCsrfToken();
   return res.json();

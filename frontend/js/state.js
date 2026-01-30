@@ -96,7 +96,7 @@ export function getLastMessage() {
 }
 
 export function setProviders(list) {
-  state.providers = list;
+  state.providers = Array.isArray(list) ? list : [];
 }
 
 export function getState() {

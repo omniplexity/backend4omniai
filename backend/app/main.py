@@ -98,13 +98,17 @@ def create_app() -> FastAPI:
     app.add_middleware(ChatCSRFMiddleware)
 
     # 3. CORS (must be configured correctly for GitHub Pages frontend)
+    allow_origin_regex = None
+    if not settings.is_production:
+        allow_origin_regex = r"^https?://(localhost|127\\.0\\.0\\.1)(:\\d+)?$"
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*", settings.csrf_header_name],
         expose_headers=["X-Request-ID"],
+        allow_origin_regex=allow_origin_regex,
     )
 
     # Register routers

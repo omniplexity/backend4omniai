@@ -127,7 +127,7 @@ All configuration is via environment variables. See `.env.example` for available
 | `SECRET_KEY` | - | **Required for production** |
 | `CORS_ORIGINS` | `https://omniplexity.github.io` | Allowed CORS origins (comma-separated) |
 | `MAX_REQUEST_BYTES` | `1048576` | Max request body size (1MB default) |
-| `DATABASE_URL` | `sqlite:///./omniai.db` | Database connection URL |
+| `DATABASE_URL` | `sqlite:///./data/omniai.db` | Database connection URL |
 
 ## API Endpoints
 

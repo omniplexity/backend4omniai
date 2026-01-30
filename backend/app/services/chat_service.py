@@ -432,6 +432,7 @@ class ChatService:
         meta["stream_id"] = stream_id
         meta["request_id"] = request_id
         meta["canceled"] = canceled
+        meta["completed"] = not canceled and error is None
         if finish_reason:
             meta["finish_reason"] = finish_reason
         if error:

@@ -117,8 +117,14 @@ async function loadCurrentUser() {
     if (!isAdmin) {
       hideAdminPanel();
     }
+    return true;
   } catch (err) {
     setAdminToggleVisible(false);
+    if (err?.code === "E2000" || err?.code === "E2002") {
+      window.location.replace("login.html");
+      return false;
+    }
+    return false;
   }
 }
 
@@ -397,9 +403,11 @@ async function handleLoginPage() {
         password: form.password?.value,
       });
       window.location.replace("index.html");
-    } catch (res) {
-      const message = res?.error?.message ? res.error.message : "Invalid credentials";
-      error.textContent = message;
+    } catch (err) {
+      const message = err?.message || "Invalid credentials";
+      if (error) {
+        error.textContent = message;
+      }
       error.classList.remove("hidden");
     } finally {
       button.disabled = false;
@@ -411,10 +419,14 @@ function buildStreamHandlers(conversation) {
   const assistantMessageId = getState().currentAssistantMessageId;
   const providerId = conversation.provider || "";
   const model = conversation.model || "";
+  let activeProvider = providerId;
+  let activeModel = model;
   return {
     meta(data) {
       const resolvedProvider = data.provider_id || providerId || "lmstudio";
       const resolvedModel = data.model || model || "default";
+      activeProvider = resolvedProvider;
+      activeModel = resolvedModel;
       updateStatus({ provider: resolvedProvider, model: resolvedModel });
       updateStreamBadge("Streaming…");
       startElapsedTimer();
@@ -449,7 +461,7 @@ function buildStreamHandlers(conversation) {
       if (updated) {
         updateMessage(updated);
       }
-      updateStatus({ provider: providerId, model, token_usage: data?.token_usage });
+      updateStatus({ provider: activeProvider, model: activeModel, token_usage: data?.token_usage });
       updateStreamBadge(null);
       hideResumeNotice();
       setRetryEnabled(false);
@@ -648,7 +660,12 @@ async function handleSelectConversation(conversation) {
     if (hint) {
       const message = payload.messages.find((msg) => msg.id === hint.assistantMessageId);
       const providerMeta = message?.provider_meta || {};
-      if (message && !message.token_usage && !providerMeta.completed && !providerMeta.canceled) {
+      const completed =
+        providerMeta.completed === true ||
+        providerMeta.canceled === true ||
+        Boolean(providerMeta.finish_reason) ||
+        Boolean(providerMeta.error);
+      if (message && !message.token_usage && !completed) {
         showResumeNotice("A response may have been interrupted.");
         setRetryEnabled(true);
       } else {
@@ -666,7 +683,8 @@ async function handleSelectConversation(conversation) {
 async function loadProviders() {
   try {
     const payload = await get("/providers");
-    setProviders(payload.providers);
+    const providers = Array.isArray(payload) ? payload : payload?.providers;
+    setProviders(Array.isArray(providers) ? providers : []);
   } catch (err) {
     showError(err.message, err.code);
   }
@@ -721,7 +739,10 @@ async function mainApp() {
   });
 
   setupAdminPanel();
-  await loadCurrentUser();
+  const authed = await loadCurrentUser();
+  if (!authed) {
+    return;
+  }
 
   await refreshConversations();
   await loadProviders();
