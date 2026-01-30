@@ -15,7 +15,18 @@
       "Bash(git commit:*)",
       "Bash(npx tsc:*)",
       "Skill(commit-commands:commit)",
-      "Skill(commit-commands:commit:*)"
+      "Skill(commit-commands:commit:*)",
+      "Bash(python -m venv:*)",
+      "Bash(.venv/Scripts/pip:*)",
+      "Bash(.venv/Scripts/python -m pytest:*)",
+      "Bash(.venv/Scripts/ruff check app tests)",
+      "Bash(.venv/Scripts/ruff check --fix app tests)",
+      "Bash(.venv/Scripts/ruff check app tests migrations)",
+      "Bash(.venv/Scripts/ruff check --fix app tests migrations)",
+      "Bash(pip install:*)",
+      "Bash(ruff check:*)",
+      "Bash(python -m ruff check:*)",
+      "Bash(python -m pytest:*)"
     ]
   }
 }
