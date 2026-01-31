@@ -129,7 +129,7 @@ def create_conversation_route(
     body: CreateConversationRequest | None = None,
     auth: RequireAuth,
     db: Session = Depends(get_db),
-    _csrf: Any = Depends(ValidateCSRF),
+    _csrf: ValidateCSRF,
 ) -> dict[str, Any]:
     user, _ = auth
     title = body.title if body else None
@@ -168,7 +168,7 @@ def rename_conversation_route(
     body: UpdateConversationRequest,
     auth: RequireAuth,
     db: Session = Depends(get_db),
-    _csrf: Any = Depends(ValidateCSRF),
+    _csrf: ValidateCSRF,
 ) -> dict[str, Any]:
     user, _ = auth
     updated = update_conversation_title(db, user.id, conversation_id, body.title)
@@ -182,7 +182,7 @@ def delete_conversation_route(
     conversation_id: str,
     auth: RequireAuth,
     db: Session = Depends(get_db),
-    _csrf: Any = Depends(ValidateCSRF),
+    _csrf: ValidateCSRF,
 ) -> dict[str, Any]:
     user, _ = auth
     if not delete_conversation(db, user.id, conversation_id):

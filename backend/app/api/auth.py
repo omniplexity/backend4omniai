@@ -395,7 +395,7 @@ async def logout(
     request: Request,
     response: Response,
     auth: RequireAuth,
-    _csrf: Annotated[None, Depends(ValidateCSRF)],
+    _csrf: ValidateCSRF,
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, str]:
     """
