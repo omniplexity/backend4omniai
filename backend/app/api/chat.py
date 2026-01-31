@@ -127,8 +127,8 @@ def _message_to_response(message: Any) -> MessageResponse:
 @router.post("/conversations")
 def create_conversation_route(
     auth: RequireAuth,
-    db: Session = Depends(get_db),
     _csrf: ValidateCSRF,
+    db: Session = Depends(get_db),
     body: CreateConversationRequest | None = None,
 ) -> dict[str, Any]:
     user, _ = auth
@@ -167,8 +167,8 @@ def rename_conversation_route(
     conversation_id: str,
     body: UpdateConversationRequest,
     auth: RequireAuth,
-    db: Session = Depends(get_db),
     _csrf: ValidateCSRF,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     user, _ = auth
     updated = update_conversation_title(db, user.id, conversation_id, body.title)
@@ -181,8 +181,8 @@ def rename_conversation_route(
 def delete_conversation_route(
     conversation_id: str,
     auth: RequireAuth,
-    db: Session = Depends(get_db),
     _csrf: ValidateCSRF,
+    db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     user, _ = auth
     if not delete_conversation(db, user.id, conversation_id):
