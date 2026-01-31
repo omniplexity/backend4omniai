@@ -178,15 +178,13 @@ class OpenAICompatProvider(BaseProvider):
         if request.stop:
             payload["stop"] = request.stop
 
-        stream = await stream_with_retries(
+        async with stream_with_retries(
             self.client,
             "POST",
             "/v1/chat/completions",
             json=payload,
             max_retries=self.max_retries,
-        )
-
-        async with stream:
+        ) as stream:
             raise_for_status(stream)
             async for line in stream.aiter_lines():
                 if not line or line.startswith(":"):

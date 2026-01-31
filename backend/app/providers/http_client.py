@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from contextlib import asynccontextmanager
+from typing import Any, AsyncIterator
 
 import httpx
 
@@ -104,6 +105,7 @@ async def request_with_retries(
     )
 
 
+@asynccontextmanager
 async def stream_with_retries(
     client: httpx.AsyncClient,
     method: str,
@@ -111,7 +113,7 @@ async def stream_with_retries(
     *,
     max_retries: int,
     **kwargs: Any,
-) -> httpx.Response:
+) -> AsyncIterator[httpx.Response]:
     """
     Open a streaming request with the same retry semantics as request_with_retries.
     """
@@ -124,7 +126,9 @@ async def stream_with_retries(
     last_error: Exception | None = None
     for attempt in range(max_retries + 1):
         try:
-            return await client.stream(method, url, **kwargs)
+            async with client.stream(method, url, **kwargs) as response:
+                yield response
+                return
         except (
             httpx.ConnectError,
             httpx.ReadTimeout,
