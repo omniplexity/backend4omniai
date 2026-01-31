@@ -126,10 +126,10 @@ def _message_to_response(message: Any) -> MessageResponse:
 
 @router.post("/conversations")
 def create_conversation_route(
-    body: CreateConversationRequest | None = None,
     auth: RequireAuth,
     db: Session = Depends(get_db),
     _csrf: ValidateCSRF,
+    body: CreateConversationRequest | None = None,
 ) -> dict[str, Any]:
     user, _ = auth
     title = body.title if body else None
