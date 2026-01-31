@@ -1,6 +1,6 @@
 ## Architecture Overview
 
-OmniAI is divided into a backend service powering authenticated SSE chat flows and a static frontend hosted on GitHub Pages. The backend (FastAPI) owns session cookies, CSRF protection, provider adapters (LM Studio, Ollama, OpenAI-compatible), quotas, and an admin surface. The frontend is vanilla JS, reads `runtime-config.json` for the backend base URL, and renders SSE-driven conversations plus the admin console.
+OmniAI is divided into a backend service powering authenticated SSE chat flows and a static frontend hosted on GitHub Pages (in a separate repo). The backend (FastAPI) owns session cookies, CSRF protection, provider adapters (LM Studio, Ollama, OpenAI-compatible), quotas, and an admin surface. The frontend is vanilla JS, reads its `runtime-config.json` for the backend base URL, and renders SSE-driven conversations plus the admin console.
 
 ### Key Components
 

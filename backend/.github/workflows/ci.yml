@@ -1,0 +1,89 @@
+name: Backend CI & Deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      registry_username:
+        description: "Container registry username (optional, can also come from runner env)"
+        required: false
+      registry_password:
+        description: "Container registry password (optional, can also come from runner env)"
+        required: false
+      registry_repository:
+        description: "Full registry repository (e.g., omniplexity/omniai-backend)"
+        required: false
+
+env:
+  REGISTRY_URL: ghcr.io
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt
+
+      - name: Run pytest
+        run: pytest -v
+
+  build-and-push:
+    name: Build and push Docker image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY_URL: ${{ env.REGISTRY_URL }}
+      REGISTRY_USERNAME: ${{ github.event.inputs.registry_username || env.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ github.event.inputs.registry_password || env.REGISTRY_PASSWORD }}
+      REGISTRY_REPOSITORY: ${{ github.event.inputs.registry_repository || env.REGISTRY_REPOSITORY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate registry inputs
+        run: |
+          if [[ -z "${REGISTRY_USERNAME:-}" ]]; then
+            echo "REGISTRY_USERNAME is not set" >&2
+            exit 1
+          fi
+          if [[ -z "${REGISTRY_PASSWORD:-}" ]]; then
+            echo "REGISTRY_PASSWORD is not set" >&2
+            exit 1
+          fi
+          if [[ -z "${REGISTRY_REPOSITORY:-}" ]]; then
+            echo "REGISTRY_REPOSITORY is not set" >&2
+            exit 1
+          fi
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_URL }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY_URL }}/${{ env.REGISTRY_REPOSITORY }}:${{ github.sha }}
+            ${{ env.REGISTRY_URL }}/${{ env.REGISTRY_REPOSITORY }}:latest

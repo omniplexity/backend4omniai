@@ -1,6 +1,6 @@
 # OmniAI Backend
 
-Privacy-first AI chat backend for LM Studio, Ollama, and OpenAI-compatible endpoints.
+Privacy-first AI chat backend for LM Studio, Ollama, and OpenAI-compatible endpoints. This repo is Kubernetes-first; local dev remains supported.
 
 ## Architecture
 
@@ -93,50 +93,9 @@ curl http://127.0.0.1:8000/healthz
 # {"status":"ok","version":"0.1.0","timestamp":"...","debug":false}
 ```
 
-## Docker (Always-Up)
+## Kubernetes (Docker Desktop)
 
-From the repo root:
-
-### Windows (PowerShell)
-
-```powershell
-# Copy env template for Docker
-Copy-Item backend\.env.example backend\.env
-
-# Start backend in Docker (always-up)
-docker compose up -d
-
-# View logs
-docker compose logs -f backend
-```
-
-### macOS / Linux
-
-```bash
-# Copy env template for Docker
-cp backend/.env.example backend/.env
-
-# Start backend in Docker (always-up)
-docker compose up -d
-
-# View logs
-docker compose logs -f backend
-```
-
-Notes:
-- Backend binds to 0.0.0.0 in the container and is published only to localhost.
-- Health endpoint is available at http://127.0.0.1:8000/health
-- Use Docker profiles for tunnels (cloudflared/ngrok) if desired.
-
-Tunnel examples:
-
-```bash
-# Cloudflare Tunnel (requires CLOUDFLARE_TUNNEL_TOKEN)
-docker compose --profile cloudflared up -d
-
-# ngrok (requires NGROK_AUTHTOKEN)
-docker compose --profile ngrok up -d
-```
+Use the manifests in `deploy/k8s` from the repo root to run the backend in the cluster. An init container runs migrations (`alembic upgrade head`) before the backend starts.
 
 ## Development
 
@@ -165,7 +124,7 @@ All configuration is via environment variables. See `.env.example` for available
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HOST` | `127.0.0.1` | Server bind address |
+| `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server port |
 | `DEBUG` | `false` | Enable debug mode (shows docs) |
 | `LOG_LEVEL` | `INFO` | Logging level |
@@ -174,6 +133,7 @@ All configuration is via environment variables. See `.env.example` for available
 | `CORS_ORIGINS` | `https://omniplexity.github.io` | Allowed CORS origins (comma-separated) |
 | `MAX_REQUEST_BYTES` | `1048576` | Max request body size (1MB default) |
 | `DATABASE_URL` | `sqlite:///./data/omniai.db` | Database connection URL |
+| `READINESS_CHECK_PROVIDERS` | `false` | If true, `/readyz` checks provider health |
 
 ## API Endpoints
 
@@ -215,7 +175,7 @@ Error codes follow the pattern:
 - No stack traces in error responses
 - Structured error codes for reliable client handling
 - Request IDs on all requests/responses for tracing
-- Backend binds to 127.0.0.1 only (external via tunnel/reverse proxy)
+- Backend binds to 0.0.0.0 inside containers; expose it only through the configured tunnel/reverse proxy.
 
 ## Next Phases
 

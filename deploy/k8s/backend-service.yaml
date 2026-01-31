@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: omniai-backend
+  namespace: omniai
+  labels:
+    app.kubernetes.io/name: omniai-backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: omniai-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

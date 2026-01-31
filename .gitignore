@@ -25,6 +25,7 @@ node_modules/
 dist/
 dist-node/
 *.tsbuildinfo
+frontend/
 
 # =============================================================================
 # Environment & Secrets

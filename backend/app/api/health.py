@@ -7,9 +7,11 @@ Provides liveness and readiness probes for monitoring.
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, status
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
+from app.db import verify_database_connection
 
 router = APIRouter(tags=["health"])
 
@@ -34,7 +36,7 @@ async def healthcheck() -> dict[str, Any]:
 
 
 @router.get("/readyz")
-async def readiness() -> dict[str, Any]:
+async def readiness(request: Request) -> JSONResponse:
     """
     Readiness check endpoint.
 
@@ -42,16 +44,41 @@ async def readiness() -> dict[str, Any]:
     dependencies are available. Used by orchestrators to determine
     if the service should receive traffic.
     """
-    # TODO: Add actual dependency checks (db, providers) in Phase 2
     checks: dict[str, bool] = {
-        "database": True,  # Placeholder - will check actual connection
+        "database": verify_database_connection(),
         "config": True,
     }
+    details: dict[str, Any] = {}
+
+    settings = get_settings()
+    if settings.readiness_check_providers:
+        providers_ok = True
+        provider_checks: dict[str, bool] = {}
+        registry = getattr(request.app.state, "provider_registry", None)
+        if registry is not None:
+            for provider_id, provider in registry.providers.items():
+                try:
+                    ok = await provider.healthcheck()
+                except Exception:  # pragma: no cover - defensive
+                    ok = False
+                provider_checks[provider_id] = bool(ok)
+                if not ok:
+                    providers_ok = False
+        else:
+            providers_ok = False
+        checks["providers"] = providers_ok
+        details["providers"] = provider_checks
 
     all_ready = all(checks.values())
-
-    return {
+    payload: dict[str, Any] = {
         "status": "ready" if all_ready else "not_ready",
         "timestamp": datetime.now(UTC).isoformat(),
         "checks": checks,
     }
+    if details:
+        payload["details"] = details
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if all_ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+        content=payload,
+    )

@@ -16,9 +16,11 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /app/requirements.txt
 
-# Create non-root user
-RUN groupadd --system app \
-    && useradd --system --gid app --create-home --home-dir /app app
+# Create non-root user with stable UID/GID for Kubernetes securityContext
+ARG APP_UID=10001
+ARG APP_GID=10001
+RUN groupadd --system --gid ${APP_GID} app \
+    && useradd --system --uid ${APP_UID} --gid ${APP_GID} --create-home --home-dir /app app
 
 # Copy application code
 COPY --chown=app:app . /app
@@ -28,7 +30,7 @@ RUN mkdir -p /app/data /app/logs \
     && chmod +x /app/entrypoint.sh \
     && chown -R app:app /app/data /app/logs
 
-USER app
+USER 10001:10001
 
 EXPOSE 8000
 

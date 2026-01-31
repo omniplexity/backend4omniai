@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     # Server
-    host: str = Field(default="127.0.0.1", description="Server bind address")
+    host: str = Field(default="0.0.0.0", description="Server bind address")
     port: int = Field(default=8000, ge=1, le=65535, description="Server port")
     debug: bool = Field(default=False, description="Debug mode")
     log_level: str = Field(default="INFO", description="Logging level")
@@ -102,12 +102,20 @@ class Settings(BaseSettings):
 
     # Providers - LM Studio (OpenAI compatible)
     lmstudio_base_url: str = Field(
-        default="http://127.0.0.1:1234", description="LM Studio API base URL"
+        default="http://host.docker.internal:1234",
+        description="LM Studio API base URL",
     )
 
     # Providers - Ollama
     ollama_base_url: str = Field(
-        default="http://127.0.0.1:11434", description="Ollama API base URL"
+        default="http://host.docker.internal:11434",
+        description="Ollama API base URL",
+    )
+
+    # Readiness checks
+    readiness_check_providers: bool = Field(
+        default=False,
+        description="If true, /readyz will validate provider health",
     )
 
     # Providers - OpenAI Compatible

@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: omniai-ngrok
+  namespace: omniai
+  labels:
+    app.kubernetes.io/name: omniai-ngrok
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: omniai-ngrok
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: omniai-ngrok
+    spec:
+      containers:
+        - name: ngrok
+          image: ngrok/ngrok:latest
+          command:
+            - ngrok
+            - http
+            - "--log=stdout"
+            - "--pooling-enabled"
+            - "--domain=$(NGROK_DOMAIN)"
+            - "http://omniai-backend:8000"
+          env:
+            - name: NGROK_DOMAIN
+              valueFrom:
+                configMapKeyRef:
+                  name: omniai-backend-config
+                  key: NGROK_DOMAIN
+            - name: NGROK_AUTHTOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: omniai-backend-secrets
+                  key: NGROK_AUTHTOKEN
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
