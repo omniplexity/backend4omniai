@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import (
     RequireAuth,
+    ValidateCSRF,
     create_session,
     delete_session,
     hash_password,
@@ -307,6 +308,7 @@ async def logout(
     request: Request,
     response: Response,
     auth: RequireAuth,
+    _csrf: Annotated[None, Depends(ValidateCSRF)],
     db: Annotated[Session, Depends(get_db)],
 ) -> dict[str, str]:
     """
