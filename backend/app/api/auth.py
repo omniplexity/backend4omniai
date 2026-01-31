@@ -94,18 +94,95 @@ def get_client_ip(request: Request) -> str | None:
     return None
 
 
+def _format_samesite(value: str | None) -> str | None:
+    if not value:
+        return None
+    lower = value.lower()
+    if lower == "none":
+        return "None"
+    if lower == "lax":
+        return "Lax"
+    if lower == "strict":
+        return "Strict"
+    return value
+
+
+def _set_cookie_with_optional_partition(
+    response: Response,
+    *,
+    key: str,
+    value: str,
+    httponly: bool,
+    secure: bool,
+    samesite: str | None,
+    domain: str | None,
+    max_age: int | None,
+    partitioned: bool,
+) -> None:
+    if not partitioned:
+        response.set_cookie(
+            key=key,
+            value=value,
+            httponly=httponly,
+            secure=secure,
+            samesite=samesite,
+            domain=domain or None,
+            max_age=max_age,
+        )
+        return
+
+    cookie = f"{key}={value}; Path=/"
+    if domain:
+        cookie += f"; Domain={domain}"
+    if max_age is not None:
+        cookie += f"; Max-Age={max_age}"
+    if secure:
+        cookie += "; Secure"
+    if httponly:
+        cookie += "; HttpOnly"
+    if samesite:
+        cookie += f"; SameSite={samesite}"
+    cookie += "; Partitioned"
+    response.headers.append("Set-Cookie", cookie)
+
+
+def _delete_cookie_with_optional_partition(
+    response: Response,
+    *,
+    key: str,
+    domain: str | None,
+    partitioned: bool,
+) -> None:
+    if not partitioned:
+        response.delete_cookie(
+            key=key,
+            domain=domain or None,
+        )
+        return
+
+    cookie = f"{key}=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+    if domain:
+        cookie += f"; Domain={domain}"
+    cookie += "; Secure; SameSite=None; Partitioned"
+    response.headers.append("Set-Cookie", cookie)
+
+
 def set_session_cookie(response: Response, token: str) -> None:
     """Set session cookie on response."""
     settings = get_settings()
     secure = settings.cookie_secure if settings.is_production else False
-    response.set_cookie(
+    samesite = _format_samesite(settings.cookie_samesite)
+    partitioned = samesite == "None" and secure
+    _set_cookie_with_optional_partition(
+        response,
         key=settings.session_cookie_name,
         value=token,
         httponly=True,
         secure=secure,
-        samesite=settings.cookie_samesite,
+        samesite=samesite,
         domain=settings.cookie_domain or None,
         max_age=settings.session_ttl_seconds,
+        partitioned=partitioned,
     )
 
 
@@ -113,27 +190,37 @@ def set_csrf_cookie(response: Response, token: str) -> None:
     """Set CSRF cookie on response (readable by JS)."""
     settings = get_settings()
     secure = settings.cookie_secure if settings.is_production else False
-    response.set_cookie(
+    samesite = _format_samesite(settings.cookie_samesite)
+    partitioned = samesite == "None" and secure
+    _set_cookie_with_optional_partition(
+        response,
         key=settings.csrf_cookie_name,
         value=token,
         httponly=False,  # Must be readable by JS
         secure=secure,
-        samesite=settings.cookie_samesite,
+        samesite=samesite,
         domain=settings.cookie_domain or None,
         max_age=settings.session_ttl_seconds,
+        partitioned=partitioned,
     )
 
 
 def clear_auth_cookies(response: Response) -> None:
     """Clear session and CSRF cookies."""
     settings = get_settings()
-    response.delete_cookie(
+    samesite = _format_samesite(settings.cookie_samesite)
+    partitioned = samesite == "None" and settings.cookie_secure
+    _delete_cookie_with_optional_partition(
+        response,
         key=settings.session_cookie_name,
         domain=settings.cookie_domain or None,
+        partitioned=partitioned,
     )
-    response.delete_cookie(
+    _delete_cookie_with_optional_partition(
+        response,
         key=settings.csrf_cookie_name,
         domain=settings.cookie_domain or None,
+        partitioned=partitioned,
     )
 
 
