@@ -1,0 +1,77 @@
+# =============================================================================
+# OmniAI with Nginx Reverse Proxy
+# =============================================================================
+# This compose file adds Nginx as a reverse proxy with automatic HTTPS
+# using Let's Encrypt (via certbot companion)
+#
+# Usage:
+#   1. Copy this file and nginx.conf to your server
+#   2. Update server_name in nginx.conf to your domain
+#   3. Run: docker compose -f docker-compose.nginx.yml up -d
+# =============================================================================
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: omniai-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - backend
+    networks:
+      - omniai_network
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: omniai-backend
+    restart: unless-stopped
+    env_file:
+      - ../../backend/.env
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      # Trust nginx proxy headers
+      FORWARDED_ALLOW_IPS: "*"
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - omniai_network
+
+  # Optional: Let's Encrypt companion for automatic HTTPS
+  # Uncomment and configure for production
+  # certbot:
+  #   image: certbot/certbot
+  #   container_name: omniai-certbot
+  #   volumes:
+  #     - ./ssl:/etc/letsencrypt
+  #     - ./certbot-data:/etc/letsencrypt
+  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  omniai_network:
+    driver: bridge

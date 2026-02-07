@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: omniai-backend
+  namespace: omniai-staging
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-staging"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - staging.omniai.dev
+      secretName: omniai-staging-tls
+  rules:
+    - host: staging.omniai.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: staging-omniai-backend
+                port:
+                  number: 8000

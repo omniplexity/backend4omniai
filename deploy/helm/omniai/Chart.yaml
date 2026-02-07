@@ -1,0 +1,27 @@
+apiVersion: v2
+name: omniai
+description: OmniAI - Full-featured AI chat platform with memory, knowledge RAG, and workflows
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - ai
+  - chat
+  - llm
+  - rag
+  - memory
+home: https://github.com/omniplexity/omniai
+sources:
+  - https://github.com/omniplexity/omniai
+maintainers:
+  - name: OmniAI Team
+    email: support@omniai.dev
+dependencies:
+  - name: postgresql
+    version: 13.2.0
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled
+  - name: redis
+    version: 18.5.0
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

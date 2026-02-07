@@ -1,0 +1,104 @@
+# OmniAI Caddy Configuration
+# Automatic HTTPS with Let's Encrypt
+
+{
+    # Global options
+    auto_https off
+    admin off
+}
+
+# HTTP redirect to HTTPS
+http://omniai.yourdomain.com {
+    redir https://{host}{uri} permanent
+}
+
+# Main HTTPS server
+https://omniai.yourdomain.com {
+    # TLS with Let's Encrypt
+    tls {
+        protocols tls1.2 tls1.3
+        ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    }
+
+    # Security headers
+    header {
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss: https:; media-src 'self' blob:;"
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        -Server
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10MB
+            roll_keep 5
+        }
+        format json
+    }
+
+    # Rate limiting (requires rate_limit module)
+    # rate_limit {
+    #     zone static_api {
+    #         key {remote_host}
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+
+    # Health check endpoint - no rate limiting
+    handle /health {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # SSE streaming endpoints - no buffering
+    handle /api/chat/stream {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+            
+            # Disable buffering for SSE
+            flush_interval -1
+            transport http {
+                read_buffer 64KB
+                write_buffer 64KB
+            }
+        }
+    }
+
+    # Auth endpoints
+    handle /api/auth/* {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # All other requests
+    handle {
+        reverse_proxy backend:8000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # Request body size
+    request_body {
+        max_size 100MB
+    }
+}

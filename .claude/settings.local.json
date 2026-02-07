@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone:*)",
+      "Bash(git ls-tree:*)",
+      "Bash(python -m venv:*)",
+      "Bash(.venv/Scripts/pip:*)",
+      "Bash(.venv/Scripts/alembic:*)",
+      "Bash(.venv/Scripts/bandit -r app -f json)",
+      "Bash(.venv/Scripts/python:*)",
+      "Bash(.venv/Scripts/bandit -r app -ll)",
+      "Bash(.venv/Scripts/bandit -r app -l)",
+      "Bash(.venv/Scripts/pip-audit:*)",
+      "Bash(timeout 10 .venv/Scripts/uvicorn:*)",
+      "Bash(docker:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(ls -la \"c:\\\\Users\\\\storm\\\\Desktop\\\\OmniAI\\\\OmniAI-backend\\\\backend\\\\app\\\\providers\"\" 2>/dev/null || echo \"Path may need adjustment \")",
+      "Bash(du:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(ls:*)",
+      "Bash(powershell:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: cleanup filesystem and fix provider bugs\n\n- Remove duplicate .env files \\(9 → 2\\)\n- Remove orphan app/ directory with voice files\n- Remove dead deploy/ and docs/ directories\n- Fix duplicate capabilities\\(\\) methods in providers\n- Fix LMStudio stream_completion ChatMessage bug\n- Fix OpenAI compat STT capability flag\n- Update docker-compose.yml as single source of truth\n- Add psycopg2-binary for PostgreSQL support\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: cleanup static site, remove Docker/Node artifacts\n\n- Remove all Docker files \\(static site doesn''t need Docker\\)\n- Remove docker-compose files \\(backend handles its own\\)\n- Remove node_modules and package.json \\(static site\\)\n- Remove monitoring configs \\(belongs in backend\\)\n- Remove test/diagnostic HTML files\n- Remove summary markdown files\n- Keep only essential static assets: HTML, JS, CSS, icons\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: full stack docker-compose with PostgreSQL and Redis\n\n- PostgreSQL 16 and Redis 7 now start by default\n- Backend depends on healthy postgres and redis\n- Ngrok tunnel available via --profile tunnel\n- All services use internal network only\n- Persistent volumes for data\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(claude mcp add:*)",
+      "Bash(find:*)",
+      "Bash(copy:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth status:*)",
+      "Bash(test:*)",
+      "Bash(git init:*)",
+      "Bash(git remote add:*)"
+    ]
+  }
+}

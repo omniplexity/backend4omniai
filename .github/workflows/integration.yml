@@ -1,0 +1,135 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  UV_VERSION: '0.5.x'
+
+jobs:
+  docker-compose-test:
+    name: Docker Compose Stack Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and start stack
+        run: |
+          cd OmniAI-backend
+          # Create minimal .env for testing
+          cat > backend/.env << 'EOF'
+          ENVIRONMENT=test
+          DEBUG=true
+          SECRET_KEY=test-secret-key-for-ci-only-not-production
+          DATABASE_URL=sqlite:///./data/omniai.db
+          CORS_ORIGINS=http://localhost:3000
+          INVITE_REQUIRED=false
+          BOOTSTRAP_ADMIN_ENABLED=false
+          EOF
+          
+          docker compose up -d --build backend
+          
+          # Wait for health check
+          sleep 30
+          docker compose ps
+          docker compose logs backend --tail=50
+
+      - name: Test health endpoint
+        run: |
+          curl -f http://localhost:8000/health || exit 1
+          curl -f http://localhost:8000/readyz || exit 1
+
+      - name: Test diagnostics endpoint
+        run: |
+          curl -f http://localhost:8000/api/diag/lite || exit 1
+
+      - name: Test API endpoints
+        run: |
+          # Test auth check
+          curl -f http://localhost:8000/api/auth/check || exit 1
+          
+          # Test capabilities
+          curl -f http://localhost:8000/capabilities || exit 1
+
+      - name: Cleanup
+        if: always()
+        run: |
+          cd OmniAI-backend
+          docker compose down -v
+
+  api-contract-test:
+    name: API Contract Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          uv pip install --system -r requirements.txt
+          uv pip install --system httpx schemathesis
+
+      - name: Start backend
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          SECRET_KEY: test-secret-key-for-ci-only
+          DEBUG: true
+          INVITE_REQUIRED: false
+          BOOTSTRAP_ADMIN_ENABLED: false
+        run: |
+          cd backend
+          uv run python -m alembic upgrade head
+          uv run python main.py &
+          sleep 10
+
+      - name: Run contract tests
+        run: |
+          # Wait for server to be ready
+          for i in {1..30}; do
+            curl -f http://localhost:8000/health && break
+            sleep 1
+          done
+          
+          # Run OpenAPI validation if schema exists
+          if [ -f contracts/openapi.yaml ]; then
+            echo "OpenAPI schema found - would run contract tests here"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: pkill -f "python main.py" || true

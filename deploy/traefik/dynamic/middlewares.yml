@@ -1,0 +1,53 @@
+# Traefik Dynamic Configuration
+# Middleware definitions
+
+http:
+  middlewares:
+    # Basic Auth for Traefik Dashboard (generate with htpasswd)
+    auth:
+      basicAuth:
+        users:
+          - "admin:$apr1$H6uskkkW$IgXLP6ewTrSuBkTrqE8wj/"  # admin:admin (change this!)
+    
+    # Security Headers
+    security-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss: https:; media-src 'self' blob:;"
+        permissionsPolicy: "geolocation=(), microphone=(), camera=()"
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+    
+    # Rate Limiting - General API
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+        period: 1m
+    
+    # Rate Limiting - Auth endpoints (stricter)
+    auth-rate-limit:
+      rateLimit:
+        average: 5
+        burst: 10
+        period: 1m
+    
+    # SSE Headers (disable buffering for streaming)
+    sse-headers:
+      headers:
+        customRequestHeaders:
+          X-Accel-Buffering: "no"
+        customResponseHeaders:
+          Cache-Control: "no-cache"
+          X-Accel-Buffering: "no"
+    
+    # Compression (exclude SSE)
+    compress:
+      compress:
+        excludedContentTypes:
+          - text/event-stream
+          - application/octet-stream

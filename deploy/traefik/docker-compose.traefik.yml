@@ -1,0 +1,102 @@
+# =============================================================================
+# OmniAI with Traefik Reverse Proxy
+# =============================================================================
+# Traefik provides automatic HTTPS, rate limiting, and metrics
+#
+# Usage:
+#   1. Update traefik.yml with your email and domain
+#   2. Run: docker compose -f docker-compose.traefik.yml up -d
+# =============================================================================
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: omniai-traefik
+    restart: unless-stopped
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Dashboard (secure this in production)
+    volumes:
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:ro
+      - ./letsencrypt:/letsencrypt
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - omniai_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.yourdomain.com`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.middlewares=auth@file"
+
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: omniai-backend
+    restart: unless-stopped
+    env_file:
+      - ../../backend/.env
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+    networks:
+      - omniai_network
+    labels:
+      - "traefik.enable=true"
+      
+      # Health check - no rate limiting
+      - "traefik.http.routers.omniai-health.rule=Host(`omniai.yourdomain.com`) && Path(`/health`)"
+      - "traefik.http.routers.omniai-health.service=omniai"
+      - "traefik.http.routers.omniai-health.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.omniai-health.priority=100"
+      
+      # SSE streaming - no buffering
+      - "traefik.http.routers.omniai-stream.rule=Host(`omniai.yourdomain.com`) && PathPrefix(`/api/chat/stream`)"
+      - "traefik.http.routers.omniai-stream.service=omniai"
+      - "traefik.http.routers.omniai-stream.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.omniai-stream.middlewares=sse-headers@file"
+      - "traefik.http.routers.omniai-stream.priority=90"
+      
+      # Auth endpoints - strict rate limiting
+      - "traefik.http.routers.omniai-auth.rule=Host(`omniai.yourdomain.com`) && PathPrefix(`/api/auth/`)"
+      - "traefik.http.routers.omniai-auth.service=omniai"
+      - "traefik.http.routers.omniai-auth.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.omniai-auth.middlewares=auth-rate-limit@file,security-headers@file"
+      - "traefik.http.routers.omniai-auth.priority=80"
+      
+      # API endpoints - rate limiting
+      - "traefik.http.routers.omniai-api.rule=Host(`omniai.yourdomain.com`) && PathPrefix(`/api/`)"
+      - "traefik.http.routers.omniai-api.service=omniai"
+      - "traefik.http.routers.omniai-api.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.omniai-api.middlewares=rate-limit@file,security-headers@file,compress@file"
+      - "traefik.http.routers.omniai-api.priority=70"
+      
+      # Default route
+      - "traefik.http.routers.omniai.rule=Host(`omniai.yourdomain.com`)"
+      - "traefik.http.routers.omniai.service=omniai"
+      - "traefik.http.routers.omniai.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.omniai.middlewares=rate-limit@file,security-headers@file,compress@file"
+      - "traefik.http.routers.omniai.priority=10"
+      
+      # Service definition
+      - "traefik.http.services.omniai.loadbalancer.server.port=8000"
+      - "traefik.http.services.omniai.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.omniai.loadbalancer.healthcheck.interval=10s"
+
+volumes:
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+networks:
+  omniai_network:
+    driver: bridge

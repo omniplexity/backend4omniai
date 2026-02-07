@@ -1,0 +1,35 @@
+{{- if .Values.backend.persistence.data.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "omniai.fullname" . }}-data
+  labels:
+    {{- include "omniai.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.backend.persistence.data.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.data.size }}
+  {{- if .Values.backend.persistence.data.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.data.storageClass }}
+  {{- end }}
+{{- end }}
+---
+{{- if .Values.backend.persistence.logs.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "omniai.fullname" . }}-logs
+  labels:
+    {{- include "omniai.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.backend.persistence.logs.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.backend.persistence.logs.size }}
+  {{- if .Values.backend.persistence.logs.storageClass }}
+  storageClassName: {{ .Values.backend.persistence.logs.storageClass }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,210 @@
+# Default values for OmniAI Helm Chart
+# This is a YAML-formatted file.
+
+# =============================================================================
+# Global Configuration
+# =============================================================================
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# =============================================================================
+# OmniAI Backend
+# =============================================================================
+backend:
+  enabled: true
+  replicaCount: 1
+  
+  image:
+    repository: omniai/backend
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  imagePullSecrets: []
+  nameOverride: ""
+  fullnameOverride: ""
+  
+  serviceAccount:
+    create: true
+    annotations: {}
+    name: ""
+  
+  podAnnotations: {}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+    runAsNonRoot: true
+    runAsUser: 1000
+  
+  service:
+    type: ClusterIP
+    port: 8000
+    targetPort: 8000
+  
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: omniai.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  
+  # Persistent volumes for data and logs
+  persistence:
+    data:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 10Gi
+    logs:
+      enabled: true
+      storageClass: ""
+      accessMode: ReadWriteOnce
+      size: 5Gi
+  
+  # Environment variables
+  env:
+    ENVIRONMENT: production
+    DEBUG: "false"
+    LOG_LEVEL: INFO
+    HOST: "0.0.0.0"
+    PORT: "8000"
+    RATE_LIMIT_RPM: "200"
+    MAX_REQUEST_BYTES: "10485760"
+    VOICE_MAX_REQUEST_BYTES: "26214400"
+    SESSION_COOKIE_NAME: omni_session
+    SESSION_TTL_SECONDS: "604800"
+    COOKIE_SECURE: "true"
+    COOKIE_SAMESITE: lax
+    CSRF_HEADER_NAME: X-CSRF-Token
+    CSRF_COOKIE_NAME: omni_csrf
+    INVITE_REQUIRED: "true"
+    BOOTSTRAP_ADMIN_ENABLED: "false"
+    PROVIDER_DEFAULT: lmstudio
+    PROVIDERS_ENABLED: lmstudio
+    PROVIDER_TIMEOUT_SECONDS: "60"
+    PROVIDER_MAX_RETRIES: "3"
+    SSE_PING_INTERVAL_SECONDS: "30"
+    READINESS_CHECK_PROVIDERS: "false"
+    LMSTUDIO_BASE_URL: "http://host.docker.internal:1234"
+    OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+    EMBEDDINGS_ENABLED: "false"
+    EMBEDDINGS_PROVIDER_PREFERENCE: openai_compat,ollama,lmstudio
+    VOICE_PROVIDER_PREFERENCE: whisper,openai_compat
+    VOICE_WHISPER_MODEL: base
+    VOICE_WHISPER_DEVICE: cpu
+    VOICE_OPENAI_AUDIO_MODEL: whisper-1
+  
+  # Secrets (use existingSecret or provide values)
+  secrets:
+    existingSecret: ""
+    secretKey: ""
+    postgresPassword: ""
+    openaiCompatApiKey: ""
+  
+  # Liveness and readiness probes
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  startupProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 30
+
+# =============================================================================
+# PostgreSQL Sub-chart Configuration
+# =============================================================================
+postgresql:
+  enabled: true
+  auth:
+    username: omniai
+    password: ""
+    database: omniai
+    existingSecret: ""
+  primary:
+    persistence:
+      enabled: true
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 20Gi
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 250m
+        memory: 512Mi
+
+# =============================================================================
+# Redis Sub-chart Configuration
+# =============================================================================
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  architecture: standalone
+  master:
+    persistence:
+      enabled: true
+      storageClass: ""
+      accessModes:
+        - ReadWriteOnce
+      size: 8Gi
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi

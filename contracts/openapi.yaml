@@ -1,0 +1,836 @@
+openapi: 3.0.3
+info:
+  title: OmniAI API
+  description: Privacy-first AI chat backend API - Agent-based architecture
+  version: 1.0.0
+  contact:
+    name: OmniAI Support
+    url: https://github.com/storm/OmniAI
+
+servers:
+  - url: /api/v1
+    description: OmniAI v1 API (recommended)
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout and invalidate session
+      responses:
+        '200':
+          description: Logout successful
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user info
+      responses:
+        '200':
+          description: User info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  /auth/csrf:
+    get:
+      tags: [Authentication]
+      summary: Get CSRF token
+      responses:
+        '200':
+          description: CSRF token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfResponse'
+
+  # Provider Endpoints
+  /providers:
+    get:
+      tags: [Providers]
+      summary: List available providers
+      responses:
+        '200':
+          description: List of providers with health status
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderStatus'
+
+  /providers/{provider_name}:
+    get:
+      tags: [Providers]
+      summary: Get provider info
+      parameters:
+        - name: provider_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Provider info with models and capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderInfo'
+
+  /providers/{provider_name}/models:
+    get:
+      tags: [Providers]
+      summary: List provider models
+      parameters:
+        - name: provider_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of models
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelInfo'
+
+  /providers/{provider_name}/capabilities:
+    get:
+      tags: [Providers]
+      summary: Get provider capabilities
+      parameters:
+        - name: provider_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Provider capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderCapabilities'
+
+  # Conversation Endpoints
+  /conversations:
+    get:
+      tags: [Conversations]
+      summary: List conversations
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Conversation'
+
+    post:
+      tags: [Conversations]
+      summary: Create a conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '200':
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+
+  /conversations/{conversation_id}:
+    get:
+      tags: [Conversations]
+      summary: Get a conversation
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Conversation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+
+    patch:
+      tags: [Conversations]
+      summary: Update a conversation
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConversationRequest'
+      responses:
+        '200':
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+
+    delete:
+      tags: [Conversations]
+      summary: Delete a conversation
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted successfully
+
+  /conversations/{conversation_id}/messages:
+    get:
+      tags: [Conversations]
+      summary: Get messages in a conversation
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+
+  /conversations/{conversation_id}/branch:
+    post:
+      tags: [Conversations]
+      summary: Branch a conversation from a message
+      parameters:
+        - name: conversation_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_message_id]
+              properties:
+                from_message_id:
+                  type: string
+                title:
+                  type: string
+      responses:
+        '200':
+          description: New branched conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+
+  # Chat Endpoints
+  /chat:
+    post:
+      tags: [Chat]
+      summary: Send a message (non-streaming)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Chat response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+
+  /chat/stream:
+    post:
+      tags: [Chat]
+      summary: Send a message (streaming)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Streaming response (SSE)
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /chat/retry:
+    post:
+      tags: [Chat]
+      summary: Retry a message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetryRequest'
+      responses:
+        '200':
+          description: Retry initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  run_id:
+                    type: string
+                  status:
+                    type: string
+
+  /chat/cancel:
+    post:
+      tags: [Chat]
+      summary: Cancel a running chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelRequest'
+      responses:
+        '200':
+          description: Cancelled successfully
+
+  # Voice Endpoints
+  /voice/transcribe:
+    post:
+      tags: [Voice]
+      summary: Transcribe audio to text
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                language:
+                  type: string
+      responses:
+        '200':
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscriptionResult'
+
+  /voice/tts:
+    post:
+      tags: [Voice]
+      summary: Synthesize text to speech
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TTSRequest'
+      responses:
+        '200':
+          description: Audio data (MP3)
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+
+  # Memory Endpoints
+  /memory:
+    get:
+      tags: [Memory]
+      summary: List memories
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of memories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemoryEntry'
+
+    post:
+      tags: [Memory]
+      summary: Create a memory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMemoryRequest'
+      responses:
+        '200':
+          description: Created memory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryEntry'
+
+  /memory/{id}:
+    get:
+      tags: [Memory]
+      summary: Get a memory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Memory details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryEntry'
+
+    patch:
+      tags: [Memory]
+      summary: Update a memory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemoryRequest'
+      responses:
+        '200':
+          description: Updated memory
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryEntry'
+
+    delete:
+      tags: [Memory]
+      summary: Delete a memory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted successfully
+
+  /memory/search:
+    post:
+      tags: [Memory]
+      summary: Search memories
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                limit:
+                  type: integer
+                  default: 20
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemorySearchResult'
+
+  # Tool Endpoints
+  /tools:
+    get:
+      tags: [Tools]
+      summary: List available tools
+      responses:
+        '200':
+          description: List of tools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolInfo'
+
+  /tools/settings:
+    get:
+      tags: [Tools]
+      summary: Get tool settings
+      parameters:
+        - name: conversation_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tool settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolSettings'
+
+    patch:
+      tags: [Tools]
+      summary: Update tool settings
+      parameters:
+        - name: conversation_id
+          in: query
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolSettings'
+      responses:
+        '200':
+          description: Updated settings
+
+  /tools/execute:
+    post:
+      tags: [Tools]
+      summary: Execute a tool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecuteRequest'
+      responses:
+        '200':
+          description: Tool result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecuteResponse'
+
+  /tools/receipts:
+    get:
+      tags: [Tools]
+      summary: List tool execution receipts
+      parameters:
+        - name: conversation_id
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: List of receipts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolReceipt'
+
+  /tools/receipts/{receipt_id}:
+    get:
+      tags: [Tools]
+      summary: Get a tool receipt
+      parameters:
+        - name: receipt_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Receipt details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolReceipt'
+
+  # Preset Endpoints
+  /presets:
+    get:
+      tags: [Presets]
+      summary: List presets
+      responses:
+        '200':
+          description: List of presets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Preset'
+
+    post:
+      tags: [Presets]
+      summary: Create a preset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePresetRequest'
+      responses:
+        '200':
+          description: Created preset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preset'
+
+  /presets/{preset_id}:
+    patch:
+      tags: [Presets]
+      summary: Update a preset
+      parameters:
+        - name: preset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePresetRequest'
+      responses:
+        '200':
+          description: Updated preset
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Preset'
+
+    delete:
+      tags: [Presets]
+      summary: Delete a preset
+      parameters:
+        - name: preset_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deleted successfully
+
+  # Ops Endpoints
+  /ops/limits:
+    get:
+      tags: [Ops]
+      summary: Get rate limits
+      responses:
+        '200':
+          description: Rate limit configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimits'
+
+  # Status Endpoint
+  /status:
+    get:
+      tags: [Status]
+      summary: Get system status
+      responses:
+        '200':
+          description: System status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  version:
+                    type: string
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        healthy:
+                          type: boolean
+
+components:
+  schemas:
+    # Auth Schemas
+    RegisterRequest:
+      type: object
+      required: [email, username, password]
+      properties:
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+          minLength: 3
+          maxLength: 64
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        invite_code:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        session_token:
+          type: string
+        csrf_token:
+          type: string
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        username:
+          type: string
+        is_admin:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CsrfResponse:
+      type: object
+      properties:
+        csrf_token:
+          type: string
+
+    # Provider Schemas
+    ProviderStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        healthy:
+          type: boolean
+
+    ProviderInfo:
+      type: object
+      properties

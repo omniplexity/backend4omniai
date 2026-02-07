@@ -1,0 +1,45 @@
+# OmniAI Backend Dependencies
+
+# Core Framework
+fastapi>=0.115.0,<1.0.0
+uvicorn[standard]>=0.30.0,<1.0.0
+pydantic>=2.5.0,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
+
+# Database
+sqlalchemy>=2.0.0,<3.0.0
+alembic>=1.13.0,<2.0.0
+
+# Authentication
+bcrypt>=4.1.0,<5.0.0
+argon2-cffi>=23.1.0,<24.0.0
+PyJWT[crypto]>=2.8.0,<3.0.0
+
+# HTTP Client
+httpx>=0.26.0,<0.28.0
+
+# Security
+python-multipart>=0.0.6,<0.1.0
+email-validator>=2.0.0,<3.0.0
+
+# Utilities
+python-dotenv>=1.0.0,<2.0.0
+
+# Production Database
+psycopg2-binary>=2.9.0,<3.0.0
+
+# Cache/Sessions
+redis>=5.0.0,<6.0.0
+
+# Development/Testing
+pytest>=7.4.0,<9.0.0
+pytest-asyncio>=0.23.0,<0.25.0
+pytest-cov>=4.1.0,<6.0.0
+httpx>=0.26.0  # For TestClient
+
+# Security Scanning (development)
+bandit>=1.7.0,<2.0.0
+pip-audit>=2.6.0,<3.0.0
+
+# Code Quality (development)
+ruff>=0.1.0,<0.4.0

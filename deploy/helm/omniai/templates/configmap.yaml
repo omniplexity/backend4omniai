@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "omniai.fullname" . }}
+  labels:
+    {{- include "omniai.labels" . | nindent 4 }}
+data:
+  # Runtime configuration for OmniAI backend
+  ENVIRONMENT: {{ .Values.backend.env.ENVIRONMENT | quote }}
+  DEBUG: {{ .Values.backend.env.DEBUG | quote }}
+  LOG_LEVEL: {{ .Values.backend.env.LOG_LEVEL | quote }}
+  HOST: {{ .Values.backend.env.HOST | quote }}
+  PORT: {{ .Values.backend.env.PORT | quote }}
+  RATE_LIMIT_RPM: {{ .Values.backend.env.RATE_LIMIT_RPM | quote }}
+  MAX_REQUEST_BYTES: {{ .Values.backend.env.MAX_REQUEST_BYTES | quote }}
+  VOICE_MAX_REQUEST_BYTES: {{ .Values.backend.env.VOICE_MAX_REQUEST_BYTES | quote }}
+  SESSION_COOKIE_NAME: {{ .Values.backend.env.SESSION_COOKIE_NAME | quote }}
+  SESSION_TTL_SECONDS: {{ .Values.backend.env.SESSION_TTL_SECONDS | quote }}
+  COOKIE_SECURE: {{ .Values.backend.env.COOKIE_SECURE | quote }}
+  COOKIE_SAMESITE: {{ .Values.backend.env.COOKIE_SAMESITE | quote }}
+  CSRF_HEADER_NAME: {{ .Values.backend.env.CSRF_HEADER_NAME | quote }}
+  CSRF_COOKIE_NAME: {{ .Values.backend.env.CSRF_COOKIE_NAME | quote }}
+  INVITE_REQUIRED: {{ .Values.backend.env.INVITE_REQUIRED | quote }}
+  BOOTSTRAP_ADMIN_ENABLED: {{ .Values.backend.env.BOOTSTRAP_ADMIN_ENABLED | quote }}
+  PROVIDER_DEFAULT: {{ .Values.backend.env.PROVIDER_DEFAULT | quote }}
+  PROVIDERS_ENABLED: {{ .Values.backend.env.PROVIDERS_ENABLED | quote }}
+  PROVIDER_TIMEOUT_SECONDS: {{ .Values.backend.env.PROVIDER_TIMEOUT_SECONDS | quote }}
+  PROVIDER_MAX_RETRIES: {{ .Values.backend.env.PROVIDER_MAX_RETRIES | quote }}
+  SSE_PING_INTERVAL_SECONDS: {{ .Values.backend.env.SSE_PING_INTERVAL_SECONDS | quote }}
+  READINESS_CHECK_PROVIDERS: {{ .Values.backend.env.READINESS_CHECK_PROVIDERS | quote }}
+  LMSTUDIO_BASE_URL: {{ .Values.backend.env.LMSTUDIO_BASE_URL | quote }}
+  OLLAMA_BASE_URL: {{ .Values.backend.env.OLLAMA_BASE_URL | quote }}
+  EMBEDDINGS_ENABLED: {{ .Values.backend.env.EMBEDDINGS_ENABLED | quote }}
+  EMBEDDINGS_PROVIDER_PREFERENCE: {{ .Values.backend.env.EMBEDDINGS_PROVIDER_PREFERENCE | quote }}
+  VOICE_PROVIDER_PREFERENCE: {{ .Values.backend.env.VOICE_PROVIDER_PREFERENCE | quote }}
+  VOICE_WHISPER_MODEL: {{ .Values.backend.env.VOICE_WHISPER_MODEL | quote }}
+  VOICE_WHISPER_DEVICE: {{ .Values.backend.env.VOICE_WHISPER_DEVICE | quote }}
+  VOICE_OPENAI_AUDIO_MODEL: {{ .Values.backend.env.VOICE_OPENAI_AUDIO_MODEL | quote }}

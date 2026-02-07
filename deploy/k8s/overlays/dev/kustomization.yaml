@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: omniai-dev
+
+resources:
+  - ../../base
+
+namePrefix: dev-
+
+commonLabels:
+  environment: dev
+
+images:
+  - name: omniai/backend
+    newTag: "dev-latest"
+
+patches:
+  - target:
+      kind: Deployment
+      name: omniai-backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits
+        value:
+          cpu: 1000m
+          memory: 2Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests
+        value:
+          cpu: 250m
+          memory: 512Mi

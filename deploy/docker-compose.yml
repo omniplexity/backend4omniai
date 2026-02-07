@@ -1,0 +1,163 @@
+# =============================================================================
+# OmniAI Backend - Full Stack Docker Compose
+# =============================================================================
+# This is the SINGLE SOURCE OF TRUTH for backend deployment.
+#
+# Usage:
+#   Full stack:           docker compose up -d
+#   With ngrok tunnel:    docker compose --profile tunnel up -d
+#   Stop all:             docker compose down
+#   View logs:            docker compose logs -f
+#
+# Services:
+#   - backend:  FastAPI application (port 8000 internal)
+#   - postgres: PostgreSQL 16 database
+#   - redis:    Redis 7 cache/sessions
+#   - ngrok:    Public tunnel (optional, use --profile tunnel)
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: omniai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: omniai
+      POSTGRES_USER: omniai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omniai_secure_2024}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - omniai_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omniai -d omniai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================================
+  # Redis Cache & Sessions
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: omniai-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    networks:
+      - omniai_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ===========================================================================
+  # Backend API Service
+  # ===========================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: omniai-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      LOG_FILE: /app/logs/omniai.log
+      # Override database to use PostgreSQL
+      DATABASE_URL: postgresql://omniai:${POSTGRES_PASSWORD:-omniai_secure_2024}@postgres:5432/omniai
+      # Redis connection
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - omniai_internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    user: root
+
+  # ===========================================================================
+  # Ngrok Tunnel (for external access)
+  # ===========================================================================
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: omniai-ngrok
+    restart: unless-stopped
+    command: >
+      http backend:8000
+      --log=stdout
+      --domain=${NGROK_DOMAIN:-rossie-chargeful-plentifully.ngrok-free.dev}
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - omniai_internal
+    profiles:
+      - tunnel
+
+  # ===========================================================================
+  # Cloudflare Tunnel (alternative to ngrok)
+  # ===========================================================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: omniai-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - omniai_internal
+    profiles:
+      - cloudflare
+
+# =============================================================================
+# Volumes (persistent data)
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  omniai_internal:
+    driver: bridge
+    # Not internal - allows egress to host.docker.internal for LM Studio/Ollama

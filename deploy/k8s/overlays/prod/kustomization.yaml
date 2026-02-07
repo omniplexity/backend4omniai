@@ -1,0 +1,49 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: omniai-prod
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - hpa.yaml
+
+namePrefix: prod-
+
+commonLabels:
+  environment: production
+
+images:
+  - name: omniai/backend
+    newTag: "1.0.0"
+
+patches:
+  - target:
+      kind: Deployment
+      name: omniai-backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/envFrom/0/configMapRef/name
+        value: prod-omniai-config
+      - op: replace
+        path: /spec/template/spec/containers/0/envFrom/1/secretRef/name
+        value: prod-omniai-secrets
+      - op: replace
+        path: /spec/template/spec/volumes/0/persistentVolumeClaim/claimName
+        value: prod-omniai-data
+      - op: replace
+        path: /spec/template/spec/volumes/1/persistentVolumeClaim/claimName
+        value: prod-omniai-logs
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits
+        value:
+          cpu: 4000m
+          memory: 8Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests
+        value:
+          cpu: 1000m
+          memory: 2Gi

@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "omniai.fullname" . }}
+  labels:
+    {{- include "omniai.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "omniai.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      {{- with .Values.backend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "omniai.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.backend.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "omniai.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: DATABASE_URL
+              value: {{ include "omniai.databaseUrl" . | quote }}
+            - name: REDIS_URL
+              value: {{ include "omniai.redisUrl" . | quote }}
+            {{- range $key, $value := .Values.backend.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omniai.fullname" . }}
+                  key: secret-key
+            {{- if .Values.backend.secrets.openaiCompatApiKey }}
+            - name: OPENAI_COMPAT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omniai.fullname" . }}
+                  key: openai-compat-api-key
+            {{- end }}
+            {{- if .Values.backend.secrets.bootstrapAdminPassword }}
+            - name: BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "omniai.fullname" . }}
+                  key: bootstrap-admin-password
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+          livenessProbe:
+            {{- toYaml .Values.backend.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.backend.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.backend.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+      volumes:
+        - name: data
+          {{- if .Values.backend.persistence.data.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "omniai.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: logs
+          {{- if .Values.backend.persistence.logs.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "omniai.fullname" . }}-logs
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
